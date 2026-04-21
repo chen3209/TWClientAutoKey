@@ -14,12 +14,13 @@ namespace AutoKey
     {
         public IntPtr Handle { get; set; }
         public string ClassName { get; set; }
+        public string Title { get; set; }
         public int ProcessId { get; set; }
         public string ProcessName { get; set; }
 
         public override string ToString()
         {
-            return string.Format("[{0}] PID={1} ClassName={2}", ProcessName, ProcessId, ClassName);
+            return string.Format("[{0}] PID={1} ClassName={2} Title={3}", ProcessName, ProcessId, ClassName, Title);
         }
     }
 
@@ -55,6 +56,12 @@ namespace AutoKey
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public static extern int GetClassName(IntPtr hWnd, StringBuilder className, int nMaxCount);
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+        public static extern int GetWindowTextLength(IntPtr hWnd);
+
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -69,6 +76,15 @@ namespace AutoKey
         {
             var sb = new StringBuilder(256);
             GetClassName(hWnd, sb, sb.Capacity);
+            return sb.ToString();
+        }
+
+        public static string GetWindowTitle(IntPtr hWnd)
+        {
+            int length = GetWindowTextLength(hWnd);
+            if (length == 0) return string.Empty;
+            var sb = new StringBuilder(length + 1);
+            GetWindowText(hWnd, sb, sb.Capacity);
             return sb.ToString();
         }
 
@@ -131,10 +147,13 @@ namespace AutoKey
                         return true;
                 }
 
+                string title = GetWindowTitle(hWnd);
+
                 result.Add(new WindowEntry
                 {
                     Handle      = hWnd,
                     ClassName   = className,
+                    Title       = title,
                     ProcessId   = (int)pid,
                     ProcessName = processName
                 });

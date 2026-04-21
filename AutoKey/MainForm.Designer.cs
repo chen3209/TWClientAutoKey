@@ -44,6 +44,7 @@ namespace AutoKey
             this.lvWindows = new System.Windows.Forms.ListView();
             this.colClassName = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colHwnd = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colTitle = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.btnDetectWindows = new System.Windows.Forms.Button();
             this.groupBox3 = new System.Windows.Forms.GroupBox();
             this.label4 = new System.Windows.Forms.Label();
@@ -138,7 +139,8 @@ namespace AutoKey
             // 
             this.lvWindows.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
             this.colClassName,
-            this.colHwnd});
+            this.colHwnd,
+            this.colTitle});
             this.lvWindows.FullRowSelect = true;
             this.lvWindows.GridLines = true;
             this.lvWindows.HeaderStyle = System.Windows.Forms.ColumnHeaderStyle.Nonclickable;
@@ -160,7 +162,12 @@ namespace AutoKey
             // colHwnd
             // 
             this.colHwnd.Text = "HWND";
-            this.colHwnd.Width = 100;
+            this.colHwnd.Width = 80;
+            // 
+            // colTitle
+            // 
+            this.colTitle.Text = "視窗標題";
+            this.colTitle.Width = 200;
             // 
             // btnDetectWindows
             // 
@@ -351,6 +358,7 @@ namespace AutoKey
         private System.Windows.Forms.ListView lvWindows;
         private System.Windows.Forms.ColumnHeader colClassName;
         private System.Windows.Forms.ColumnHeader colHwnd;
+        private System.Windows.Forms.ColumnHeader colTitle;
         private System.Windows.Forms.Button btnDetectWindows;
         private System.Windows.Forms.GroupBox groupBox3;
         private System.Windows.Forms.Label label4;

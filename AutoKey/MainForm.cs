@@ -76,6 +76,7 @@ namespace AutoKey
             {
                 var item = new ListViewItem(w.ClassName);
                 item.SubItems.Add("0x" + w.Handle.ToString("X"));
+                item.SubItems.Add(w.Title);
                 lvWindows.Items.Add(item);
             }
 
