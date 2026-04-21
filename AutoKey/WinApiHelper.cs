@@ -188,6 +188,8 @@ namespace AutoKey
             int lParamUp = lParamDown | (1 << 30) | (1 << 31);
 
             PostMessage(hWnd, WM_KEYDOWN, (IntPtr)(int)vkCode, (IntPtr)lParamDown);
+            // 增加微小延遲。某些老遊戲（如天堂）的內部迴圈如果發現 KeyDown 跟 KeyUp 在同一禎發生，會予以無視。
+            System.Threading.Thread.Sleep(30);
             PostMessage(hWnd, WM_KEYUP,   (IntPtr)(int)vkCode, (IntPtr)lParamUp);
         }
 
