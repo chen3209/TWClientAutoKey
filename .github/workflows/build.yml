@@ -1,0 +1,33 @@
+name: Build AutoKey for Windows
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:      # 允許手動從 GitHub 網頁觸發建置
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build Release
+        run: |
+          msbuild AutoKey/AutoKey.csproj `
+            /p:Configuration=Release `
+            /p:Platform=AnyCPU `
+            /t:Rebuild `
+            /v:minimal
+
+      - name: Upload AutoKey.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: AutoKey-Windows
+          path: AutoKey/bin/Release/AutoKey.exe
+          retention-days: 90
+          if-no-files-found: error
