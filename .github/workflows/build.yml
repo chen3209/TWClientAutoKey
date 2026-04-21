@@ -21,6 +21,7 @@ jobs:
           msbuild AutoKey/AutoKey.csproj `
             /p:Configuration=Release `
             /p:Platform=AnyCPU `
+            /restore `
             /t:Rebuild `
             /v:minimal
 
