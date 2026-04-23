@@ -43,7 +43,7 @@ namespace AutoKey
             this.label5 = new System.Windows.Forms.Label();
             this.lvWindows = new System.Windows.Forms.ListView();
             this.colClassName = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.colHwnd = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
+            this.colPid = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.colTitle = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.btnDetectWindows = new System.Windows.Forms.Button();
             this.groupBox3 = new System.Windows.Forms.GroupBox();
@@ -57,7 +57,6 @@ namespace AutoKey
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.lblStatus = new System.Windows.Forms.ToolStripStatusLabel();
             this.lblTargetInfo = new System.Windows.Forms.ToolStripStatusLabel();
-            this.timerKey = new System.Windows.Forms.Timer(this.components);
             this.notifyIcon1 = new System.Windows.Forms.NotifyIcon(this.components);
             this.groupBox1.SuspendLayout();
             this.groupBox2.SuspendLayout();
@@ -73,14 +72,14 @@ namespace AutoKey
             this.groupBox1.Controls.Add(this.label1);
             this.groupBox1.Location = new System.Drawing.Point(12, 12);
             this.groupBox1.Name = "groupBox1";
-            this.groupBox1.Size = new System.Drawing.Size(360, 60);
+            this.groupBox1.Size = new System.Drawing.Size(656, 60);
             this.groupBox1.TabIndex = 0;
             this.groupBox1.TabStop = false;
             this.groupBox1.Text = "【第一步】選擇目標程序";
             // 
             // btnRefreshProcess
             // 
-            this.btnRefreshProcess.Location = new System.Drawing.Point(279, 22);
+            this.btnRefreshProcess.Location = new System.Drawing.Point(575, 22);
             this.btnRefreshProcess.Name = "btnRefreshProcess";
             this.btnRefreshProcess.Size = new System.Drawing.Size(75, 23);
             this.btnRefreshProcess.TabIndex = 2;
@@ -94,8 +93,9 @@ namespace AutoKey
             this.cmbProcess.FormattingEnabled = true;
             this.cmbProcess.Location = new System.Drawing.Point(70, 23);
             this.cmbProcess.Name = "cmbProcess";
-            this.cmbProcess.Size = new System.Drawing.Size(203, 20);
+            this.cmbProcess.Size = new System.Drawing.Size(499, 20);
             this.cmbProcess.TabIndex = 1;
+            this.cmbProcess.SelectedIndexChanged += new System.EventHandler(this.cmbProcess_SelectedIndexChanged);
             // 
             // label1
             // 
@@ -114,22 +114,23 @@ namespace AutoKey
             this.groupBox2.Controls.Add(this.btnDetectWindows);
             this.groupBox2.Location = new System.Drawing.Point(12, 78);
             this.groupBox2.Name = "groupBox2";
-            this.groupBox2.Size = new System.Drawing.Size(360, 160);
+            this.groupBox2.Size = new System.Drawing.Size(656, 245);
             this.groupBox2.TabIndex = 1;
             this.groupBox2.TabStop = false;
             this.groupBox2.Text = "【第二步】偵測並選擇目標視窗";
             // 
             // txtClassName
             // 
-            this.txtClassName.Location = new System.Drawing.Point(82, 130);
+            this.txtClassName.Location = new System.Drawing.Point(82, 213);
             this.txtClassName.Name = "txtClassName";
-            this.txtClassName.Size = new System.Drawing.Size(272, 22);
+            this.txtClassName.ReadOnly = true;
+            this.txtClassName.Size = new System.Drawing.Size(561, 22);
             this.txtClassName.TabIndex = 3;
             // 
             // label5
             // 
             this.label5.AutoSize = true;
-            this.label5.Location = new System.Drawing.Point(15, 134);
+            this.label5.Location = new System.Drawing.Point(15, 217);
             this.label5.Name = "label5";
             this.label5.Size = new System.Drawing.Size(61, 12);
             this.label5.TabIndex = 2;
@@ -139,7 +140,7 @@ namespace AutoKey
             // 
             this.lvWindows.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
             this.colClassName,
-            this.colHwnd,
+            this.colPid,
             this.colTitle});
             this.lvWindows.FullRowSelect = true;
             this.lvWindows.GridLines = true;
@@ -148,7 +149,8 @@ namespace AutoKey
             this.lvWindows.Location = new System.Drawing.Point(13, 50);
             this.lvWindows.MultiSelect = false;
             this.lvWindows.Name = "lvWindows";
-            this.lvWindows.Size = new System.Drawing.Size(341, 74);
+            this.lvWindows.ShowItemToolTips = true;
+            this.lvWindows.Size = new System.Drawing.Size(630, 157);
             this.lvWindows.TabIndex = 1;
             this.lvWindows.UseCompatibleStateImageBehavior = false;
             this.lvWindows.View = System.Windows.Forms.View.Details;
@@ -157,23 +159,23 @@ namespace AutoKey
             // colClassName
             // 
             this.colClassName.Text = "ClassName";
-            this.colClassName.Width = 200;
+            this.colClassName.Width = 190;
             // 
-            // colHwnd
+            // colPid
             // 
-            this.colHwnd.Text = "HWND";
-            this.colHwnd.Width = 80;
+            this.colPid.Text = "PID";
+            this.colPid.Width = 70;
             // 
             // colTitle
             // 
             this.colTitle.Text = "視窗標題";
-            this.colTitle.Width = 200;
+            this.colTitle.Width = 360;
             // 
             // btnDetectWindows
             // 
             this.btnDetectWindows.Location = new System.Drawing.Point(13, 21);
             this.btnDetectWindows.Name = "btnDetectWindows";
-            this.btnDetectWindows.Size = new System.Drawing.Size(341, 23);
+            this.btnDetectWindows.Size = new System.Drawing.Size(630, 23);
             this.btnDetectWindows.TabIndex = 0;
             this.btnDetectWindows.Text = "🔍 偵測選取程序的視窗";
             this.btnDetectWindows.UseVisualStyleBackColor = true;
@@ -186,9 +188,9 @@ namespace AutoKey
             this.groupBox3.Controls.Add(this.label2);
             this.groupBox3.Controls.Add(this.cmbHotkey);
             this.groupBox3.Controls.Add(this.label3);
-            this.groupBox3.Location = new System.Drawing.Point(12, 244);
+            this.groupBox3.Location = new System.Drawing.Point(12, 329);
             this.groupBox3.Name = "groupBox3";
-            this.groupBox3.Size = new System.Drawing.Size(360, 60);
+            this.groupBox3.Size = new System.Drawing.Size(656, 60);
             this.groupBox3.TabIndex = 2;
             this.groupBox3.TabStop = false;
             this.groupBox3.Text = "【第三步】設定按鍵與間隔";
@@ -260,9 +262,9 @@ namespace AutoKey
             // 
             this.btnStart.BackColor = System.Drawing.Color.LightGreen;
             this.btnStart.Font = new System.Drawing.Font("新細明體", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(136)));
-            this.btnStart.Location = new System.Drawing.Point(12, 310);
+            this.btnStart.Location = new System.Drawing.Point(12, 395);
             this.btnStart.Name = "btnStart";
-            this.btnStart.Size = new System.Drawing.Size(175, 40);
+            this.btnStart.Size = new System.Drawing.Size(322, 40);
             this.btnStart.TabIndex = 3;
             this.btnStart.Text = "▶ 開始發送";
             this.btnStart.UseVisualStyleBackColor = false;
@@ -273,9 +275,9 @@ namespace AutoKey
             this.btnStop.BackColor = System.Drawing.Color.LightCoral;
             this.btnStop.Enabled = false;
             this.btnStop.Font = new System.Drawing.Font("新細明體", 12F, System.Drawing.FontStyle.Bold, System.Drawing.GraphicsUnit.Point, ((byte)(136)));
-            this.btnStop.Location = new System.Drawing.Point(197, 310);
+            this.btnStop.Location = new System.Drawing.Point(346, 395);
             this.btnStop.Name = "btnStop";
-            this.btnStop.Size = new System.Drawing.Size(175, 40);
+            this.btnStop.Size = new System.Drawing.Size(322, 40);
             this.btnStop.TabIndex = 4;
             this.btnStop.Text = "■ 停止";
             this.btnStop.UseVisualStyleBackColor = false;
@@ -286,9 +288,9 @@ namespace AutoKey
             this.statusStrip1.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.lblStatus,
             this.lblTargetInfo});
-            this.statusStrip1.Location = new System.Drawing.Point(0, 359);
+            this.statusStrip1.Location = new System.Drawing.Point(0, 444);
             this.statusStrip1.Name = "statusStrip1";
-            this.statusStrip1.Size = new System.Drawing.Size(384, 22);
+            this.statusStrip1.Size = new System.Drawing.Size(680, 22);
             this.statusStrip1.TabIndex = 5;
             this.statusStrip1.Text = "statusStrip1";
             // 
@@ -301,14 +303,10 @@ namespace AutoKey
             // lblTargetInfo
             // 
             this.lblTargetInfo.Name = "lblTargetInfo";
-            this.lblTargetInfo.Size = new System.Drawing.Size(296, 17);
+            this.lblTargetInfo.Size = new System.Drawing.Size(592, 17);
             this.lblTargetInfo.Spring = true;
             this.lblTargetInfo.Text = "準備就緒";
             this.lblTargetInfo.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
-            // 
-            // timerKey
-            // 
-            this.timerKey.Tick += new System.EventHandler(this.timerKey_Tick);
             // 
             // notifyIcon1
             // 
@@ -320,7 +318,7 @@ namespace AutoKey
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(384, 381);
+            this.ClientSize = new System.Drawing.Size(680, 466);
             this.Controls.Add(this.statusStrip1);
             this.Controls.Add(this.btnStop);
             this.Controls.Add(this.btnStart);
@@ -357,7 +355,7 @@ namespace AutoKey
         private System.Windows.Forms.GroupBox groupBox2;
         private System.Windows.Forms.ListView lvWindows;
         private System.Windows.Forms.ColumnHeader colClassName;
-        private System.Windows.Forms.ColumnHeader colHwnd;
+        private System.Windows.Forms.ColumnHeader colPid;
         private System.Windows.Forms.ColumnHeader colTitle;
         private System.Windows.Forms.Button btnDetectWindows;
         private System.Windows.Forms.GroupBox groupBox3;
@@ -371,7 +369,6 @@ namespace AutoKey
         private System.Windows.Forms.StatusStrip statusStrip1;
         private System.Windows.Forms.ToolStripStatusLabel lblStatus;
         private System.Windows.Forms.ToolStripStatusLabel lblTargetInfo;
-        private System.Windows.Forms.Timer timerKey;
         private System.Windows.Forms.TextBox txtClassName;
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.NotifyIcon notifyIcon1;

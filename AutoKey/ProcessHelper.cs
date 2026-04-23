@@ -68,5 +68,72 @@ namespace AutoKey
 
             return pids;
         }
+
+        /// <summary>
+        /// 驗證 PID 目前是否仍屬於指定的程序名稱
+        /// </summary>
+        public static bool IsProcessIdMatchingName(int processId, string processName)
+        {
+            if (processId <= 0 || string.IsNullOrEmpty(processName))
+                return false;
+
+            Process proc = null;
+            try
+            {
+                proc = Process.GetProcessById(processId);
+                return string.Equals(proc.ProcessName, processName, StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (proc != null)
+                    proc.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 取得指定 PID 目前程序的啟動時間。
+        /// </summary>
+        public static bool TryGetProcessStartTime(int processId, out DateTime startTime)
+        {
+            startTime = DateTime.MinValue;
+            if (processId <= 0)
+                return false;
+
+            Process proc = null;
+            try
+            {
+                proc = Process.GetProcessById(processId);
+                startTime = proc.StartTime;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                if (proc != null)
+                    proc.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// 驗證 PID、程序名稱與啟動時間是否仍為同一個程序實例。
+        /// </summary>
+        public static bool IsProcessInstanceMatching(int processId, string processName, DateTime expectedStartTime)
+        {
+            if (!IsProcessIdMatchingName(processId, processName))
+                return false;
+
+            DateTime currentStartTime;
+            if (!TryGetProcessStartTime(processId, out currentStartTime))
+                return false;
+
+            return currentStartTime == expectedStartTime;
+        }
     }
 }

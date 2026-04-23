@@ -62,7 +62,7 @@ namespace AutoKey
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
         public static extern int GetWindowTextLength(IntPtr hWnd);
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
@@ -102,7 +102,7 @@ namespace AutoKey
         ///   支援萬用字元 * 與 ?。
         /// </param>
         /// <param name="targetPids">
-        ///   限定 PID 集合；若為 null 則依 processName 自動取得
+        ///   限定 PID 集合；若為 null 則依 processName 自動取得。
         /// </param>
         public static List<WindowEntry> FindWindowsByProcess(
             string processName,
@@ -111,7 +111,10 @@ namespace AutoKey
         {
             var result = new List<WindowEntry>();
 
-            if (string.IsNullOrEmpty(processName) && (targetPids == null || targetPids.Count == 0))
+            if (targetPids == null)
+                targetPids = ProcessHelper.GetPidsByName(processName);
+
+            if (targetPids == null || targetPids.Count == 0)
                 return result;
 
             bool filterByClass = !string.IsNullOrEmpty(classNamePattern);
@@ -134,9 +137,15 @@ namespace AutoKey
                 uint pid;
                 GetWindowThreadProcessId(hWnd, out pid);
 
-                bool pidMatch = (targetPids != null && targetPids.Contains((int)pid));
+                bool pidMatch = targetPids.Contains((int)pid);
                 if (!pidMatch)
                     return true;
+
+                if (!string.IsNullOrEmpty(processName) &&
+                    !ProcessHelper.IsProcessIdMatchingName((int)pid, processName))
+                {
+                    return true;
+                }
 
                 string className = GetWindowClassName(hWnd);
 
@@ -172,10 +181,10 @@ namespace AutoKey
         /// 對指定視窗以 PostMessage 發送 KeyDown + KeyUp，
         /// 視窗不需在前景即可接收。
         /// </summary>
-        public static void SendKey(IntPtr hWnd, Keys vkCode)
+        public static bool SendKey(IntPtr hWnd, Keys vkCode)
         {
             if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
-                return;
+                return false;
 
             uint scanCode = MapVirtualKey((uint)vkCode, 0);
             bool isExtended = IsExtendedKey(vkCode);
@@ -187,10 +196,16 @@ namespace AutoKey
             // lParam for WM_KEYUP: prev state=1, transition=1
             int lParamUp = lParamDown | (1 << 30) | (1 << 31);
 
-            PostMessage(hWnd, WM_KEYDOWN, (IntPtr)(int)vkCode, (IntPtr)lParamDown);
-            // 增加微小延遲。某些老遊戲（如天堂）的內部迴圈如果發現 KeyDown 跟 KeyUp 在同一禎發生，會予以無視。
+            if (!PostMessage(hWnd, WM_KEYDOWN, (IntPtr)(int)vkCode, (IntPtr)lParamDown))
+                return false;
+
+            // 某些老遊戲如果 KeyDown 跟 KeyUp 在同一禎發生，會忽略這次輸入。
             System.Threading.Thread.Sleep(30);
-            PostMessage(hWnd, WM_KEYUP,   (IntPtr)(int)vkCode, (IntPtr)lParamUp);
+
+            if (!IsWindow(hWnd))
+                return false;
+
+            return PostMessage(hWnd, WM_KEYUP, (IntPtr)(int)vkCode, (IntPtr)lParamUp);
         }
 
         private static bool IsExtendedKey(Keys key)
