@@ -17,6 +17,8 @@ namespace AutoKey
         public string Title { get; set; }
         public int ProcessId { get; set; }
         public string ProcessName { get; set; }
+        public DateTime ProcessStartTime { get; set; }
+        public bool ProcessStartTimeKnown { get; set; }
 
         public override string ToString()
         {

@@ -13,6 +13,7 @@ namespace AutoKey
         private Keys targetKey = Keys.None;
         private int targetProcessId = 0;
         private DateTime targetProcessStartTime = DateTime.MinValue;
+        private bool targetProcessStartTimeKnown = false;
         private bool autoStoppedByTargetLoss = false;
         private string autoStopMessage = "";
         private readonly object sendStateLock = new object();
@@ -92,6 +93,13 @@ namespace AutoKey
 
             foreach (var w in windows)
             {
+                DateTime processStartTime;
+                if (ProcessHelper.TryGetProcessStartTime(w.ProcessId, out processStartTime))
+                {
+                    w.ProcessStartTime = processStartTime;
+                    w.ProcessStartTimeKnown = true;
+                }
+
                 var item = new ListViewItem(w.ClassName);
                 item.SubItems.Add(w.ProcessId.ToString());
                 item.SubItems.Add(w.Title);
@@ -117,6 +125,7 @@ namespace AutoKey
             autoStopMessage = "";
             targetProcessId = 0;
             targetProcessStartTime = DateTime.MinValue;
+            targetProcessStartTimeKnown = false;
             sendFailureCount = 0;
 
             lvWindows.Items.Clear();
@@ -163,7 +172,7 @@ namespace AutoKey
             targetKey = (Keys)cmbHotkey.SelectedValue;
             CaptureSelectedWindow();
 
-            if (targetProcessId <= 0 || targetProcessStartTime == DateTime.MinValue)
+            if (targetProcessId <= 0)
             {
                 MessageBox.Show(
                     "請先偵測並選擇一個明確的目標視窗。\r\n目前已停用自動群發模式，以避免影響其他視窗。",
@@ -173,7 +182,7 @@ namespace AutoKey
                 return;
             }
 
-            if (ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime) == null)
+            if (ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown) == null)
             {
                 MessageBox.Show(
                     "目前無法用所選的 PID + ClassName 找到唯一視窗。\r\n請重新偵測並確認同一個 PID 底下只有一個符合的目標視窗。",
@@ -220,6 +229,7 @@ namespace AutoKey
             Keys hotkey;
             int processId;
             DateTime processStartTime;
+            bool processStartTimeKnown;
             int interval;
 
             lock (sendStateLock)
@@ -232,13 +242,14 @@ namespace AutoKey
                 hotkey = targetKey;
                 processId = targetProcessId;
                 processStartTime = targetProcessStartTime;
+                processStartTimeKnown = targetProcessStartTimeKnown;
                 interval = sendIntervalMs;
             }
 
             try
             {
                 // 安全模式：只允許對明確鎖定的單一視窗發送。
-                if (processId <= 0 || processStartTime == DateTime.MinValue)
+                if (processId <= 0)
                 {
                     if (IsTimerGenerationActive(expectedGeneration))
                     {
@@ -247,7 +258,7 @@ namespace AutoKey
                     return;
                 }
 
-                var selectedTarget = ResolveSelectedWindow(processName, className, processId, processStartTime);
+                var selectedTarget = ResolveSelectedWindow(processName, className, processId, processStartTime, processStartTimeKnown);
                 if (selectedTarget != null)
                 {
                     lock (sendStateLock)
@@ -336,6 +347,7 @@ namespace AutoKey
                     reason);
                 targetProcessId = 0;
                 targetProcessStartTime = DateTime.MinValue;
+                targetProcessStartTimeKnown = false;
                 targetMissingSinceUtc = DateTime.MinValue;
                 sendFailureCount = 0;
             }
@@ -506,6 +518,7 @@ namespace AutoKey
         {
             targetProcessId = 0;
             targetProcessStartTime = DateTime.MinValue;
+            targetProcessStartTimeKnown = false;
 
             var currentSelection = lvWindows.SelectedItems.Count > 0
                 ? lvWindows.SelectedItems[0].Tag as WindowEntry
@@ -520,16 +533,32 @@ namespace AutoKey
             targetProcessId = currentSelection.ProcessId;
             targetClassName = currentSelection.ClassName;
             txtClassName.Text = targetClassName;
-            ProcessHelper.TryGetProcessStartTime(targetProcessId, out targetProcessStartTime);
+
+            if (currentSelection.ProcessStartTimeKnown)
+            {
+                targetProcessStartTime = currentSelection.ProcessStartTime;
+                targetProcessStartTimeKnown = true;
+            }
+            else
+            {
+                targetProcessStartTimeKnown = ProcessHelper.TryGetProcessStartTime(targetProcessId, out targetProcessStartTime);
+            }
         }
 
-        private WindowEntry ResolveSelectedWindow(string processName, string className, int processId, DateTime processStartTime)
+        private WindowEntry ResolveSelectedWindow(string processName, string className, int processId, DateTime processStartTime, bool processStartTimeKnown)
         {
             if (processId <= 0)
                 return null;
 
-            if (!ProcessHelper.IsProcessInstanceMatching(processId, processName, processStartTime))
+            if (processStartTimeKnown)
+            {
+                if (!ProcessHelper.IsProcessInstanceMatching(processId, processName, processStartTime))
+                    return null;
+            }
+            else if (!ProcessHelper.IsProcessIdMatchingName(processId, processName))
+            {
                 return null;
+            }
 
             var windows = WinApiHelper.FindWindowsByProcess(
                 processName,
