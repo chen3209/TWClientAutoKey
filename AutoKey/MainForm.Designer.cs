@@ -207,7 +207,7 @@ namespace AutoKey
             // numInterval
             // 
             this.numInterval.Increment = new decimal(new int[] {
-            100,
+            1000,
             0,
             0,
             0});
@@ -218,7 +218,7 @@ namespace AutoKey
             0,
             0});
             this.numInterval.Minimum = new decimal(new int[] {
-            100,
+            1000,
             0,
             0,
             0});
@@ -226,7 +226,7 @@ namespace AutoKey
             this.numInterval.Size = new System.Drawing.Size(75, 22);
             this.numInterval.TabIndex = 3;
             this.numInterval.Value = new decimal(new int[] {
-            1000,
+            6000,
             0,
             0,
             0});
