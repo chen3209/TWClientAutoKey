@@ -305,7 +305,7 @@ namespace AutoKey
             IntPtr targetHWnd = hWnd; // 預設是頂層主視窗
 
             var gti = new GUITHREADINFO();
-            gti.cbSize = Marshal.SizeOf(gti);
+            gti.cbSize = Marshal.SizeOf(typeof(GUITHREADINFO));
             if (GetGUIThreadInfo(targetThreadId, ref gti))
             {
                 if (gti.hwndFocus != IntPtr.Zero)

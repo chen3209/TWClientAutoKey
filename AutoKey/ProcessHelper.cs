@@ -14,7 +14,7 @@ namespace AutoKey
         /// </summary>
         public static List<string> GetRunningProcessNames()
         {
-            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+            var uniqueNames = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
             Process[] procs = null;
             try
             {
@@ -25,7 +25,7 @@ namespace AutoKey
                     {
                         // 過濾系統空閒程序
                         if (p.Id > 0 && !string.IsNullOrEmpty(p.ProcessName))
-                            names.Add(p.ProcessName);
+                            uniqueNames[p.ProcessName] = true;
                     }
                     catch { /* 存取部分系統程序可能拋出例外，略過 */ }
                 }
@@ -36,7 +36,9 @@ namespace AutoKey
                     foreach (var p in procs) p.Dispose();
             }
 
-            return new List<string>(names);
+            var list = new List<string>(uniqueNames.Keys);
+            list.Sort(StringComparer.OrdinalIgnoreCase);
+            return list;
         }
 
         /// <summary>
