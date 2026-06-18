@@ -88,6 +88,9 @@ namespace AutoKey
         public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
 
         [DllImport("user32.dll")]
+        public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
+
+        [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
@@ -323,11 +326,11 @@ namespace AutoKey
                 }
             }
 
-            // 2. 對真正的目標視窗同步發送按鍵事件
+            // 2. 對真正的目標視窗非同步發送按鍵事件
             if (IsWindow(targetHWnd))
             {
                 // 發送按鍵按下訊息
-                SendMessage(targetHWnd, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
+                PostMessage(targetHWnd, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
 
                 // 按壓持續 100 毫秒，模擬真實人類按鍵
                 System.Threading.Thread.Sleep(100);
@@ -335,7 +338,7 @@ namespace AutoKey
                 if (IsWindow(targetHWnd))
                 {
                     // 發送按鍵釋放訊息
-                    SendMessage(targetHWnd, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
+                    PostMessage(targetHWnd, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
                 }
             }
 
@@ -372,29 +375,57 @@ namespace AutoKey
         
         /// <summary>
         /// 對指定視窗以 PostMessage 發送滑鼠左鍵點擊。
-        /// 座標必須是相對於該視窗的 Client Coordinates。
+        /// 座標為相對於主視窗 (hWnd) 的 Client Coordinates。如果該執行緒有邏輯焦點子視窗，
+        /// 則會自動解析子視窗並進行座標對應轉換後發送，確保鍵鼠發送目標一致。
         /// </summary>
         public static bool SendMouseClick(IntPtr hWnd, int x, int y)
         {
             if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
                 return false;
 
+            // 1. 取得目標視窗執行緒的當前邏輯焦點視窗
+            uint unusedPid;
+            uint targetThreadId = GetWindowThreadProcessId(hWnd, out unusedPid);
+            IntPtr targetHWnd = hWnd; // 預設是頂層主視窗
+
+            var gti = new GUITHREADINFO();
+            gti.cbSize = Marshal.SizeOf(typeof(GUITHREADINFO));
+            if (GetGUIThreadInfo(targetThreadId, ref gti))
+            {
+                if (gti.hwndFocus != IntPtr.Zero)
+                {
+                    targetHWnd = gti.hwndFocus; // 使用實際擁有邏輯焦點的子視窗
+                }
+            }
+
+            // 2. 轉換座標為子視窗相對座標
+            int targetX = x;
+            int targetY = y;
+            if (targetHWnd != hWnd)
+            {
+                POINT pt = new POINT { X = x, Y = y };
+                ClientToScreen(hWnd, ref pt);
+                ScreenToClient(targetHWnd, ref pt);
+                targetX = pt.X;
+                targetY = pt.Y;
+            }
+
             // lParam 是 Y 座標在最高 16 位元，X 座標在最低 16 位元
-            IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
+            IntPtr lParam = (IntPtr)((targetY << 16) | (targetX & 0xFFFF));
 
             // 先發送 WM_MOUSEMOVE 讓遊戲內部更新游標狀態，避免狀態突變導致閃退
-            PostMessage(hWnd, 0x0200, IntPtr.Zero, lParam);
+            PostMessage(targetHWnd, 0x0200, IntPtr.Zero, lParam);
             System.Threading.Thread.Sleep(30);
 
-            if (!PostMessage(hWnd, WM_LBUTTONDOWN, (IntPtr)MK_LBUTTON, lParam))
+            if (!PostMessage(targetHWnd, WM_LBUTTONDOWN, (IntPtr)MK_LBUTTON, lParam))
                 return false;
 
             System.Threading.Thread.Sleep(50);
 
-            if (!IsWindow(hWnd))
+            if (!IsWindow(targetHWnd))
                 return false;
 
-            return PostMessage(hWnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
+            return PostMessage(targetHWnd, WM_LBUTTONUP, IntPtr.Zero, lParam);
         }
     }
 }
