@@ -1,0 +1,809 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Windows.Forms;
+
+namespace AutoKey
+{
+    public partial class MainForm : Form
+    {
+        private bool isRunning = false;
+        private string targetProcessName = "";
+        private string targetClassName = "";
+        private Keys targetKey = Keys.None;
+        private int targetProcessId = 0;
+        private DateTime targetProcessStartTime = DateTime.MinValue;
+        private bool targetProcessStartTimeKnown = false;
+        private bool autoStoppedByTargetLoss = false;
+        private string autoStopMessage = "";
+        private readonly object sendStateLock = new object();
+        private System.Threading.Timer sendTimer = null;
+        private int sendTimerGeneration = 0;
+        private int sendIntervalMs = 1000;
+        private DateTime targetMissingSinceUtc = DateTime.MinValue;
+        private int sendFailureCount = 0;
+        private const int MaxConsecutiveSendFailures = 3;
+
+        private int targetX = 0;
+        private int targetY = 0;
+        private bool isCapturingCoord = false;
+        private Button btnCaptureCoord;
+        private TextBox txtCoordX;
+        private TextBox txtCoordY;
+        private Label lblCoord;
+        private bool hasCapturedCoordinate = false;
+        
+        private Button btnLockWindow;
+        private bool isExplicitlyLocked = false;
+
+        public MainForm()
+        {
+            InitializeComponent();
+        }
+
+        private void MainForm_Load(object sender, EventArgs e)
+        {
+            // 初始化圖示
+            try
+            {
+                this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                notifyIcon1.Icon = this.Icon;
+            }
+            catch { }
+
+            // 載入快速鍵清單
+            var hotkeys = HotkeyInfo.GetDefaultList();
+            cmbHotkey.DataSource = hotkeys;
+            cmbHotkey.DisplayMember = "DisplayName";
+            cmbHotkey.ValueMember = "Key";
+            cmbHotkey.SelectedIndex = 0;
+
+            // 動態加入鎖定視窗按鈕 (到 groupBox2)
+            btnLockWindow = new Button() { Text = "🔒 鎖定選擇的視窗", Location = new Point(480, 212), Size = new Size(160, 24) };
+            btnLockWindow.Click += BtnLockWindow_Click;
+            groupBox2.Controls.Add(btnLockWindow);
+            txtClassName.Width = 390; // 稍微縮短文字框以容納按鈕
+
+            // 動態加入座標擷取 UI (到 groupBox3)
+            btnCaptureCoord = new Button() { Text = "擷取座標", Location = new Point(400, 22), Size = new Size(80, 23) };
+            btnCaptureCoord.Click += BtnCaptureCoord_Click;
+            lblCoord = new Label() { Text = "X, Y:", Location = new Point(485, 27), Size = new Size(35, 12) };
+            txtCoordX = new TextBox() { Location = new Point(520, 23), Size = new Size(40, 22), Text = "0" };
+            txtCoordY = new TextBox() { Location = new Point(565, 23), Size = new Size(40, 22), Text = "0" };
+            groupBox3.Controls.Add(btnCaptureCoord);
+            groupBox3.Controls.Add(lblCoord);
+            groupBox3.Controls.Add(txtCoordX);
+            groupBox3.Controls.Add(txtCoordY);
+
+            MouseHook.OnLeftClick += MouseHook_OnLeftClick;
+
+            RefreshProcessList();
+        }
+
+        private void btnRefreshProcess_Click(object sender, EventArgs e)
+        {
+            RefreshProcessList();
+        }
+
+        private void RefreshProcessList()
+        {
+            ResetDetectedWindowState();
+            cmbProcess.DataSource = null;
+            var list = ProcessHelper.GetRunningProcessNames();
+            cmbProcess.DataSource = list;
+            
+            // 嘗試預選包含 TWClient 的程序
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].IndexOf("TWClient", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    cmbProcess.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+
+        private void cmbProcess_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            ResetDetectedWindowState();
+        }
+
+        private void btnDetectWindows_Click(object sender, EventArgs e)
+        {
+            if (cmbProcess.SelectedItem == null)
+            {
+                MessageBox.Show("請先選擇程序！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ResetDetectedWindowState();
+
+            string processName = cmbProcess.SelectedItem.ToString();
+            var pids = ProcessHelper.GetPidsByName(processName);
+            var windows = WinApiHelper.FindWindowsByProcess(processName, "", pids);
+
+            foreach (var w in windows)
+            {
+                DateTime processStartTime;
+                if (ProcessHelper.TryGetProcessStartTime(w.ProcessId, out processStartTime))
+                {
+                    w.ProcessStartTime = processStartTime;
+                    w.ProcessStartTimeKnown = true;
+                }
+
+                var item = new ListViewItem(w.ClassName);
+                item.SubItems.Add(w.ProcessId.ToString());
+                item.SubItems.Add(w.Title);
+                item.Tag = w;
+                item.ToolTipText = w.Title;
+                lvWindows.Items.Add(item);
+            }
+
+            if (windows.Count == 0)
+            {
+                lblTargetInfo.Text = "找不到可鎖定的目標視窗";
+                MessageBox.Show("找不到該程序的任何可見視窗。", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                lblTargetInfo.Text = string.Format("已找到 {0} 個視窗，請選擇其中一個", windows.Count);
+            }
+        }
+
+        private void ResetDetectedWindowState()
+        {
+            autoStoppedByTargetLoss = false;
+            autoStopMessage = "";
+            targetProcessId = 0;
+            targetProcessStartTime = DateTime.MinValue;
+            targetProcessStartTimeKnown = false;
+            sendFailureCount = 0;
+
+            lvWindows.Items.Clear();
+            txtClassName.Text = "";
+            hasCapturedCoordinate = false;
+            
+            isExplicitlyLocked = false;
+            if (btnLockWindow != null)
+            {
+                btnLockWindow.Text = "🔒 鎖定選擇的視窗";
+                btnLockWindow.BackColor = SystemColors.Control;
+            }
+            lvWindows.Enabled = true;
+            btnDetectWindows.Enabled = true;
+
+            if (!isRunning)
+            {
+                lblStatus.Text = "狀態: ⏸ 停止";
+                lblTargetInfo.Text = "請重新偵測目標視窗";
+            }
+            UpdateUIState();
+        }
+
+        private void lvWindows_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (lvWindows.SelectedItems.Count > 0)
+            {
+                var selectedWindow = lvWindows.SelectedItems[0].Tag as WindowEntry;
+                if (selectedWindow != null)
+                {
+                    txtClassName.Text = selectedWindow.ClassName;
+                    lblTargetInfo.Text = string.Format(
+                        "已鎖定條件: PID {0}, ClassName {1}",
+                        selectedWindow.ProcessId,
+                        selectedWindow.ClassName);
+                }
+            }
+            else
+            {
+                txtClassName.Text = "";
+                lblTargetInfo.Text = "請選擇單一目標視窗";
+            }
+            UpdateUIState();
+        }
+
+        private void btnStart_Click(object sender, EventArgs e)
+        {
+            if (cmbProcess.SelectedItem == null)
+            {
+                MessageBox.Show("請先選擇程序！", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            targetProcessName = cmbProcess.SelectedItem.ToString();
+            targetClassName = txtClassName.Text.Trim();
+            targetKey = (Keys)cmbHotkey.SelectedValue;
+            int.TryParse(txtCoordX.Text, out targetX);
+            int.TryParse(txtCoordY.Text, out targetY);
+            
+            // 由於已改成按鈕鎖定，我們確保使用的是已鎖定的資料，不必在此再次 Capture
+            // CaptureSelectedWindow();
+
+            if (targetProcessId <= 0)
+            {
+                MessageBox.Show(
+                    "請先偵測並選擇一個明確的目標視窗。\r\n目前已停用自動群發模式，以避免影響其他視窗。",
+                    "需要指定單一視窗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown) == null)
+            {
+                MessageBox.Show(
+                    "目前無法用所選的 PID + ClassName 找到唯一視窗。\r\n請重新偵測並確認同一個 PID 底下只有一個符合的目標視窗。",
+                    "無法安全鎖定視窗",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            int interval = (int)numInterval.Value;
+            lock (sendStateLock)
+            {
+                isRunning = true;
+                autoStoppedByTargetLoss = false;
+                autoStopMessage = "";
+                sendIntervalMs = interval;
+                targetMissingSinceUtc = DateTime.MinValue;
+                sendFailureCount = 0;
+            }
+
+            StartSendTimer(interval);
+            UpdateUIState();
+        }
+
+        private void btnStop_Click(object sender, EventArgs e)
+        {
+            StopSendTimer();
+            lock (sendStateLock)
+            {
+                isRunning = false;
+                autoStoppedByTargetLoss = false;
+                autoStopMessage = "";
+                targetMissingSinceUtc = DateTime.MinValue;
+                sendFailureCount = 0;
+            }
+            UpdateUIState();
+        }
+
+        private void SendTimerCallback(object state)
+        {
+            var expectedGeneration = (int)state;
+            string processName;
+            string className;
+            Keys hotkey;
+            int processId;
+            DateTime processStartTime;
+            bool processStartTimeKnown;
+            int interval;
+
+            lock (sendStateLock)
+            {
+                if (!isRunning || expectedGeneration != sendTimerGeneration)
+                    return;
+
+                processName = targetProcessName;
+                className = targetClassName;
+                hotkey = targetKey;
+                processId = targetProcessId;
+                processStartTime = targetProcessStartTime;
+                processStartTimeKnown = targetProcessStartTimeKnown;
+                interval = sendIntervalMs;
+            }
+
+            try
+            {
+                // 安全模式：只允許對明確鎖定的單一視窗發送。
+                if (processId <= 0)
+                {
+                    if (IsTimerGenerationActive(expectedGeneration))
+                    {
+                        SetTargetInfoText(string.Format("目標: {0} (未鎖定程序實例，未發送)", processName));
+                    }
+                    return;
+                }
+
+                var selectedTarget = ResolveSelectedWindow(processName, className, processId, processStartTime, processStartTimeKnown);
+                if (selectedTarget != null)
+                {
+                    lock (sendStateLock)
+                    {
+                        if (!isRunning || expectedGeneration != sendTimerGeneration)
+                            return;
+
+                        targetMissingSinceUtc = DateTime.MinValue;
+                    }
+
+                    if (!SendKeyIfTimerActive(selectedTarget.Handle, hotkey, expectedGeneration))
+                    {
+                        if (ShouldAutoStopForSendFailure(expectedGeneration))
+                        {
+                            HandleAutoStop(
+                                processName,
+                                "發送按鍵失敗，已自動停止，請確認權限或重新偵測",
+                                "發送按鍵失敗，請確認 AutoKey 與目標程式的權限層級一致，並重新偵測後再開始發送。",
+                                expectedGeneration);
+                        }
+                        else if (IsTimerGenerationActive(expectedGeneration))
+                        {
+                            SetTargetInfoText(string.Format(
+                                "目標: {0} (發送失敗，重試中...)",
+                                processName));
+                        }
+                        return;
+                    }
+
+                    if (IsTimerGenerationActive(expectedGeneration))
+                    {
+                        SetTargetInfoText(string.Format(
+                            "目標: {0} (PID {1}, ClassName {2})",
+                            processName,
+                            selectedTarget.ProcessId,
+                            selectedTarget.ClassName));
+                    }
+                }
+                else if (ShouldAutoStopForTargetLoss(interval, expectedGeneration))
+                {
+                    HandleTargetLoss(processName, expectedGeneration);
+                }
+                else
+                {
+                    if (IsTimerGenerationActive(expectedGeneration))
+                    {
+                        SetTargetInfoText(string.Format(
+                            "目標: {0} (暫時找不到視窗，重試中...)",
+                            processName));
+                    }
+                }
+            }
+            finally
+            {
+                RearmSendTimer(expectedGeneration);
+            }
+        }
+
+        private void HandleTargetLoss(string processName, int expectedGeneration)
+        {
+            HandleAutoStop(
+                processName,
+                "目標視窗失聯，已自動停止，請重新偵測",
+                "目標視窗已失聯，請重新偵測後再開始發送。",
+                expectedGeneration);
+        }
+
+        private void HandleAutoStop(string processName, string reason, string notificationText, int expectedGeneration)
+        {
+            System.Threading.Timer timerToDispose = null;
+
+            lock (sendStateLock)
+            {
+                if (expectedGeneration != sendTimerGeneration)
+                    return;
+
+                sendTimerGeneration++;
+                timerToDispose = sendTimer;
+                sendTimer = null;
+
+                isRunning = false;
+                autoStoppedByTargetLoss = true;
+                autoStopMessage = string.Format(
+                    "目標: {0} ({1})",
+                    processName,
+                    reason);
+                targetProcessId = 0;
+                targetProcessStartTime = DateTime.MinValue;
+                targetProcessStartTimeKnown = false;
+                targetMissingSinceUtc = DateTime.MinValue;
+                sendFailureCount = 0;
+            }
+
+            if (timerToDispose != null)
+                timerToDispose.Dispose();
+
+            RunOnUiThread(delegate
+            {
+                lvWindows.Items.Clear();
+                txtClassName.Text = "";
+                UpdateUIState();
+                ShowAutoStopNotification(notificationText);
+            });
+        }
+
+        private void ShowAutoStopNotification(string text)
+        {
+            try
+            {
+                notifyIcon1.BalloonTipTitle = "AutoKey 已自動停止";
+                notifyIcon1.BalloonTipText = text;
+                notifyIcon1.ShowBalloonTip(5000, "AutoKey 已自動停止", text, ToolTipIcon.Warning);
+            }
+            catch { }
+        }
+
+        private void StartSendTimer(int interval)
+        {
+            System.Threading.Timer timerToDispose = null;
+            int generation;
+
+            lock (sendStateLock)
+            {
+                sendTimerGeneration++;
+                generation = sendTimerGeneration;
+                timerToDispose = sendTimer;
+                sendTimer = new System.Threading.Timer(
+                    SendTimerCallback,
+                    generation,
+                    0,
+                    System.Threading.Timeout.Infinite);
+            }
+
+            if (timerToDispose != null)
+                timerToDispose.Dispose();
+        }
+
+        private void StopSendTimer()
+        {
+            System.Threading.Timer timerToDispose = null;
+
+            lock (sendStateLock)
+            {
+                sendTimerGeneration++;
+                timerToDispose = sendTimer;
+                sendTimer = null;
+            }
+
+            if (timerToDispose != null)
+                timerToDispose.Dispose();
+        }
+
+        private void RearmSendTimer(int expectedGeneration)
+        {
+            lock (sendStateLock)
+            {
+                if (!isRunning || sendTimer == null || expectedGeneration != sendTimerGeneration)
+                    return;
+
+                sendTimer.Change(sendIntervalMs, System.Threading.Timeout.Infinite);
+            }
+        }
+
+        private bool ShouldAutoStopForTargetLoss(int interval, int expectedGeneration)
+        {
+            var now = DateTime.UtcNow;
+
+            lock (sendStateLock)
+            {
+                if (!isRunning || expectedGeneration != sendTimerGeneration)
+                    return false;
+
+                if (targetMissingSinceUtc == DateTime.MinValue)
+                {
+                    targetMissingSinceUtc = now;
+                    return false;
+                }
+
+                return now - targetMissingSinceUtc >= GetTargetLossGraceDuration(interval);
+            }
+        }
+
+        private static TimeSpan GetTargetLossGraceDuration(int interval)
+        {
+            int graceMs = Math.Min(Math.Max(interval * 3, 1000), 5000);
+            return TimeSpan.FromMilliseconds(graceMs);
+        }
+
+        private bool IsTimerGenerationActive(int expectedGeneration)
+        {
+            lock (sendStateLock)
+            {
+                return isRunning && expectedGeneration == sendTimerGeneration;
+            }
+        }
+
+        private bool SendKeyIfTimerActive(IntPtr hWnd, Keys hotkey, int expectedGeneration)
+        {
+            // 先在鎖內檢查狀態，然後釋放鎖再進行耗時操作，避免阻塞 UI 執行緒
+            lock (sendStateLock)
+            {
+                if (!isRunning || expectedGeneration != sendTimerGeneration)
+                    return false;
+            }
+
+            bool sent = WinApiHelper.SendKey(hWnd, hotkey);
+            if (sent)
+            {
+                // 按鍵與滑鼠點擊之間間隔 500 毫秒
+                System.Threading.Thread.Sleep(500);
+
+                // 重新檢查是否仍在執行（使用者可能已按停止）
+                lock (sendStateLock)
+                {
+                    if (!isRunning || expectedGeneration != sendTimerGeneration)
+                        return true; // 按鍵已送出，但使用者已停止，不再發送滑鼠點擊
+                }
+
+                // 發送滑鼠點擊
+                WinApiHelper.SendMouseClick(hWnd, targetX, targetY);
+
+                lock (sendStateLock)
+                {
+                    sendFailureCount = 0;
+                }
+            }
+
+            return sent;
+        }
+
+        private bool ShouldAutoStopForSendFailure(int expectedGeneration)
+        {
+            lock (sendStateLock)
+            {
+                if (!isRunning || expectedGeneration != sendTimerGeneration)
+                    return false;
+
+                sendFailureCount++;
+                return sendFailureCount >= MaxConsecutiveSendFailures;
+            }
+        }
+
+        private void SetTargetInfoText(string text)
+        {
+            RunOnUiThread(delegate
+            {
+                lblTargetInfo.Text = text;
+            });
+        }
+
+        private void RunOnUiThread(Action action)
+        {
+            if (IsDisposed)
+                return;
+
+            if (InvokeRequired)
+            {
+                try
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (!IsDisposed)
+                            action();
+                    });
+                }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
+            }
+            else
+            {
+                action();
+            }
+        }
+
+        private void CaptureSelectedWindow()
+        {
+            targetProcessId = 0;
+            targetProcessStartTime = DateTime.MinValue;
+            targetProcessStartTimeKnown = false;
+
+            var currentSelection = lvWindows.SelectedItems.Count > 0
+                ? lvWindows.SelectedItems[0].Tag as WindowEntry
+                : null;
+
+            if (currentSelection == null)
+                return;
+
+            if (!string.Equals(currentSelection.ProcessName, targetProcessName, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            targetProcessId = currentSelection.ProcessId;
+            targetClassName = currentSelection.ClassName;
+            txtClassName.Text = targetClassName;
+
+            if (currentSelection.ProcessStartTimeKnown)
+            {
+                targetProcessStartTime = currentSelection.ProcessStartTime;
+                targetProcessStartTimeKnown = true;
+            }
+            else
+            {
+                targetProcessStartTimeKnown = ProcessHelper.TryGetProcessStartTime(targetProcessId, out targetProcessStartTime);
+            }
+        }
+
+        private WindowEntry ResolveSelectedWindow(string processName, string className, int processId, DateTime processStartTime, bool processStartTimeKnown)
+        {
+            if (processId <= 0)
+                return null;
+
+            if (processStartTimeKnown)
+            {
+                if (!ProcessHelper.IsProcessInstanceMatching(processId, processName, processStartTime))
+                    return null;
+            }
+            else if (!ProcessHelper.IsProcessIdMatchingName(processId, processName))
+            {
+                return null;
+            }
+
+            var windows = WinApiHelper.FindWindowsByProcess(
+                processName,
+                className,
+                new HashSet<int> { processId });
+
+            if (windows.Count == 0)
+                return null;
+
+            if (windows.Count == 1)
+                return windows[0];
+
+            return null;
+        }
+
+        private void UpdateUIState()
+        {
+            bool isWindowLocked = isExplicitlyLocked;
+            bool canCapture = isWindowLocked && !isRunning;
+            bool canSetKeyAndStart = hasCapturedCoordinate && !isRunning;
+
+            groupBox1.Enabled = !isRunning && !isExplicitlyLocked;
+            groupBox2.Enabled = !isRunning; // groupBox2 內部控制項個別處理
+            
+            btnDetectWindows.Enabled = !isRunning && !isExplicitlyLocked;
+            lvWindows.Enabled = !isRunning && !isExplicitlyLocked;
+            
+            if (btnLockWindow != null)
+                btnLockWindow.Enabled = !isRunning && lvWindows.SelectedItems.Count > 0;
+            
+            if (btnCaptureCoord != null)
+                btnCaptureCoord.Enabled = canCapture || isCapturingCoord; // 如果正在擷取也保持 Enabled，由內部邏輯擋
+            
+            if (txtCoordX != null) txtCoordX.Enabled = canCapture;
+            if (txtCoordY != null) txtCoordY.Enabled = canCapture;
+
+            cmbHotkey.Enabled = canSetKeyAndStart;
+            numInterval.Enabled = canSetKeyAndStart;
+
+            btnStart.Enabled = canSetKeyAndStart;
+            btnStop.Enabled = isRunning;
+
+            if (isRunning)
+            {
+                lblStatus.Text = "狀態: ● 執行中";
+            }
+            else if (autoStoppedByTargetLoss)
+            {
+                lblStatus.Text = "狀態: ⚠ 已自動停止";
+                lblTargetInfo.Text = autoStopMessage;
+            }
+            else
+            {
+                lblStatus.Text = "狀態: ⏸ 停止";
+                lblTargetInfo.Text = "準備就緒";
+            }
+        }
+
+        private void MainForm_Resize(object sender, EventArgs e)
+        {
+            // 使用者要求縮小至工作列即可，不再隱藏視窗
+            if (this.WindowState == FormWindowState.Minimized)
+            {
+                // this.Hide(); // 註解此行，保留在工具列
+                notifyIcon1.Visible = true;
+            }
+        }
+
+        private void notifyIcon1_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            this.Show();
+            this.WindowState = FormWindowState.Normal;
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            StopSendTimer();
+            MouseHook.Stop();
+            base.OnFormClosed(e);
+        }
+
+        private void BtnLockWindow_Click(object sender, EventArgs e)
+        {
+            if (isExplicitlyLocked)
+            {
+                // 解除鎖定
+                isExplicitlyLocked = false;
+                btnLockWindow.Text = "🔒 鎖定選擇的視窗";
+                btnLockWindow.BackColor = SystemColors.Control;
+                hasCapturedCoordinate = false;
+                UpdateUIState();
+            }
+            else
+            {
+                // 鎖定
+                if (lvWindows.SelectedItems.Count == 0)
+                {
+                    MessageBox.Show("請先從上方清單選擇一個視窗！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                targetProcessName = cmbProcess.SelectedItem?.ToString() ?? "";
+                CaptureSelectedWindow();
+                if (targetProcessId <= 0)
+                {
+                    MessageBox.Show("無法鎖定視窗，請重新偵測。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                
+                isExplicitlyLocked = true;
+                btnLockWindow.Text = "🔓 解除鎖定";
+                btnLockWindow.BackColor = Color.LightCoral;
+                UpdateUIState();
+            }
+        }
+
+        private void BtnCaptureCoord_Click(object sender, EventArgs e)
+        {
+            if (!isExplicitlyLocked || targetProcessId <= 0)
+            {
+                MessageBox.Show("請先選擇並鎖定目標視窗", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            isCapturingCoord = true;
+            btnCaptureCoord.Text = "等待點擊...";
+            btnCaptureCoord.BackColor = Color.Yellow;
+            MouseHook.Start();
+        }
+
+        private void MouseHook_OnLeftClick(int x, int y)
+        {
+            if (!isCapturingCoord) return;
+
+            var target = ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown);
+            if (target != null && target.Handle != IntPtr.Zero)
+            {
+                WinApiHelper.RECT rect;
+                if (WinApiHelper.GetWindowRect(target.Handle, out rect))
+                {
+                    if (x < rect.Left || x > rect.Right || y < rect.Top || y > rect.Bottom)
+                    {
+                        RunOnUiThread(delegate
+                        {
+                            btnCaptureCoord.Text = "擷取座標";
+                            btnCaptureCoord.BackColor = SystemColors.Control;
+                            isCapturingCoord = false;
+                            MessageBox.Show("請點擊鎖定的應用程式視窗範圍內！", "擷取失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        });
+                        MouseHook.Stop();
+                        return;
+                    }
+                }
+
+                WinApiHelper.POINT pt = new WinApiHelper.POINT { X = x, Y = y };
+                WinApiHelper.ScreenToClient(target.Handle, ref pt);
+                
+                RunOnUiThread(delegate
+                {
+                    txtCoordX.Text = pt.X.ToString();
+                    txtCoordY.Text = pt.Y.ToString();
+                    btnCaptureCoord.Text = "擷取座標";
+                    btnCaptureCoord.BackColor = SystemColors.Control;
+                    isCapturingCoord = false;
+                    hasCapturedCoordinate = true;
+                    UpdateUIState();
+                });
+                MouseHook.Stop();
+            }
+            else
+            {
+                RunOnUiThread(delegate
+                {
+                    btnCaptureCoord.Text = "擷取座標";
+                    btnCaptureCoord.BackColor = SystemColors.Control;
+                    isCapturingCoord = false;
+                    MessageBox.Show("無法找到已鎖定的視窗，請重新鎖定。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                });
+                MouseHook.Stop();
+            }
+        }
+    }
+}
