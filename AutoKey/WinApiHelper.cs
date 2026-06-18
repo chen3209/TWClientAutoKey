@@ -231,7 +231,8 @@ namespace AutoKey
                 return false;
 
             // 某些老遊戲如果 KeyDown 跟 KeyUp 在同一禎發生，會忽略這次輸入。
-            System.Threading.Thread.Sleep(50);
+            // 延長至 100 毫秒模擬真實人類按壓的長度
+            System.Threading.Thread.Sleep(100);
 
             if (!IsWindow(hWnd))
                 return false;

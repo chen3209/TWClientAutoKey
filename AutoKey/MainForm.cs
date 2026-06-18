@@ -512,8 +512,8 @@ namespace AutoKey
                 bool sent = WinApiHelper.SendKey(hWnd, hotkey);
                 if (sent)
                 {
-                    // 加入短暫延遲，讓遊戲有時間處理鍵盤訊號，避免同一個 Frame 收到過多事件而閃退
-                    System.Threading.Thread.Sleep(50);
+                    // 根據要求，按鍵與滑鼠點擊之間間隔 500 毫秒
+                    System.Threading.Thread.Sleep(500);
                     // 發送滑鼠點擊
                     WinApiHelper.SendMouseClick(hWnd, targetX, targetY);
                     sendFailureCount = 0;
