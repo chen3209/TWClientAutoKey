@@ -41,6 +41,8 @@ namespace AutoKey
         public const int MK_LBUTTON = 0x0001;
         public const uint WM_ACTIVATE = 0x0006;
         public const int WA_ACTIVE = 1;
+        public const uint WM_CHAR = 0x0102;
+        public const uint WM_SETFOCUS = 0x0007;
 
 
         // ──────────────────────────────────────
@@ -72,6 +74,9 @@ namespace AutoKey
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("user32.dll")]
         private static extern uint MapVirtualKey(uint uCode, uint uMapType);
@@ -251,7 +256,7 @@ namespace AutoKey
         // 發送按鍵（使用 SendInput 硬體層級模擬）
         // ──────────────────────────────────────
         /// <summary>
-        /// 使用 PostMessage 對指定視窗及其所有子視窗發送鍵盤按鍵 (WM_KEYDOWN / WM_KEYUP)。
+        /// 使用 SendMessage / PostMessage 對指定視窗及其所有子視窗發送鍵盤按鍵 (WM_KEYDOWN / WM_KEYUP / WM_CHAR)。
         /// 可在目標視窗處於背景時正常運作，不需要目標視窗為前景。
         /// </summary>
         public static bool SendKey(IntPtr hWnd, Keys vkCode)
@@ -277,6 +282,9 @@ namespace AutoKey
             lParamUp |= (1u << 30);
             lParamUp |= (1u << 31);
 
+            // 1. 僅對最頂層主視窗發送 WM_ACTIVATE 狀態偽裝 (不重複發送給子視窗以免狀態錯亂)
+            PostMessage(hWnd, WM_ACTIVATE, (IntPtr)WA_ACTIVE, IntPtr.Zero);
+
             // 收集主視窗與其下所有子視窗 Handle
             var targets = new List<IntPtr> { hWnd };
             EnumChildWindows(hWnd, (childHWnd, lp) =>
@@ -285,26 +293,40 @@ namespace AutoKey
                 return true;
             }, IntPtr.Zero);
 
-            // 發送 WM_ACTIVATE 與 WM_KEYDOWN 給所有相關視窗
+            // 2. 對所有相關視窗發送焦點狀態與按壓訊息
             foreach (var target in targets)
             {
                 if (IsWindow(target))
                 {
-                    // 偽裝視窗為 Active 狀態，欺騙某些在背景會忽略鍵盤訊息的遊戲
-                    PostMessage(target, WM_ACTIVATE, (IntPtr)WA_ACTIVE, IntPtr.Zero);
-                    PostMessage(target, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
+                    // 送出 WM_SETFOCUS 使其獲取邏輯焦點
+                    PostMessage(target, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
+
+                    // 使用 SendMessage 同步發送，穿透某些過濾 PostMessage 的保護機制
+                    SendMessage(target, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
+
+                    // 如果是字母或數字鍵，額外加送 WM_CHAR 訊息，因為有些遊戲僅由 WM_CHAR 讀取按鍵輸入
+                    if ((vkCode >= Keys.D0 && vkCode <= Keys.D9) ||
+                        (vkCode >= Keys.NumPad0 && vkCode <= Keys.NumPad9) ||
+                        (vkCode >= Keys.A && vkCode <= Keys.Z))
+                    {
+                        char charVal = (char)MapVirtualKey((uint)vkCode, 2); // MAPVK_VK_TO_CHAR = 2
+                        if (charVal != '\0')
+                        {
+                            SendMessage(target, WM_CHAR, (IntPtr)charVal, (IntPtr)lParamDown);
+                        }
+                    }
                 }
             }
 
             // 按壓持續 100 毫秒，模擬真實人類按鍵
             System.Threading.Thread.Sleep(100);
 
-            // 發送 WM_KEYUP 給所有相關視窗
+            // 3. 對所有相關視窗發送釋放訊息
             foreach (var target in targets)
             {
                 if (IsWindow(target))
                 {
-                    PostMessage(target, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
+                    SendMessage(target, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
                 }
             }
 
