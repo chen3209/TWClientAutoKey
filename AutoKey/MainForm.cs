@@ -36,6 +36,12 @@ namespace AutoKey
         private Button btnLockWindow;
         private bool isExplicitlyLocked = false;
 
+        private NumericUpDown numDelay;
+        private Label lblDelay;
+        private Label lblDelayUnit;
+        private Button btnSaveConfig;
+        private int sendDelayMs = 500;
+
         public MainForm()
         {
             InitializeComponent();
@@ -64,12 +70,42 @@ namespace AutoKey
             groupBox2.Controls.Add(btnLockWindow);
             txtClassName.Width = 390; // 稍微縮短文字框以容納按鈕
 
-            // 動態加入座標擷取 UI (到 groupBox3)
-            btnCaptureCoord = new Button() { Text = "擷取座標", Location = new Point(400, 22), Size = new Size(80, 23) };
+            // 調整下方按鈕大小並加入儲存設定按鈕
+            btnStart.Width = 240;
+            btnStop.Width = 240;
+            btnStop.Location = new Point(428, 395);
+
+            btnSaveConfig = new Button() { 
+                Text = "💾 儲存設定", 
+                Location = new Point(262, 395), 
+                Size = new Size(156, 40),
+                Font = new Font("新細明體", 12F, FontStyle.Bold),
+                BackColor = Color.LightBlue
+            };
+            btnSaveConfig.Click += BtnSaveConfig_Click;
+            this.Controls.Add(btnSaveConfig);
+
+            // 動態加入鍵鼠間隔與座標擷取 UI (到 groupBox3)
+            lblDelay = new Label() { Text = "鍵鼠間隔:", Location = new Point(345, 27), Size = new Size(58, 12) };
+            numDelay = new NumericUpDown() { 
+                Location = new Point(405, 23), 
+                Size = new Size(50, 22), 
+                Minimum = 0, 
+                Maximum = 10000, 
+                Value = 500,
+                Increment = 100
+            };
+            lblDelayUnit = new Label() { Text = "毫秒", Location = new Point(458, 27), Size = new Size(29, 12) };
+
+            btnCaptureCoord = new Button() { Text = "擷取座標", Location = new Point(492, 22), Size = new Size(65, 23) };
             btnCaptureCoord.Click += BtnCaptureCoord_Click;
-            lblCoord = new Label() { Text = "X, Y:", Location = new Point(485, 27), Size = new Size(35, 12) };
-            txtCoordX = new TextBox() { Location = new Point(520, 23), Size = new Size(40, 22), Text = "0" };
-            txtCoordY = new TextBox() { Location = new Point(565, 23), Size = new Size(40, 22), Text = "0" };
+            lblCoord = new Label() { Text = "X, Y:", Location = new Point(560, 27), Size = new Size(30, 12) };
+            txtCoordX = new TextBox() { Location = new Point(592, 23), Size = new Size(30, 22), Text = "0" };
+            txtCoordY = new TextBox() { Location = new Point(625, 23), Size = new Size(30, 22), Text = "0" };
+
+            groupBox3.Controls.Add(lblDelay);
+            groupBox3.Controls.Add(numDelay);
+            groupBox3.Controls.Add(lblDelayUnit);
             groupBox3.Controls.Add(btnCaptureCoord);
             groupBox3.Controls.Add(lblCoord);
             groupBox3.Controls.Add(txtCoordX);
@@ -78,6 +114,7 @@ namespace AutoKey
             MouseHook.OnLeftClick += MouseHook_OnLeftClick;
 
             RefreshProcessList();
+            LoadConfig();
         }
 
         private void btnRefreshProcess_Click(object sender, EventArgs e)
@@ -240,6 +277,7 @@ namespace AutoKey
             }
 
             int interval = (int)numInterval.Value;
+            sendDelayMs = (int)numDelay.Value;
             lock (sendStateLock)
             {
                 isRunning = true;
@@ -514,8 +552,13 @@ namespace AutoKey
             bool sent = WinApiHelper.SendKey(hWnd, hotkey);
             if (sent)
             {
-                // 按鍵與滑鼠點擊之間間隔 500 毫秒
-                System.Threading.Thread.Sleep(500);
+                // 按鍵與滑鼠點擊之間的間隔時間（動態讀取）
+                int delay = 500;
+                lock (sendStateLock)
+                {
+                    delay = sendDelayMs;
+                }
+                System.Threading.Thread.Sleep(delay);
 
                 // 重新檢查是否仍在執行（使用者可能已按停止）
                 lock (sendStateLock)
@@ -804,6 +847,107 @@ namespace AutoKey
                 });
                 MouseHook.Stop();
             }
+        }
+
+        private void BtnSaveConfig_Click(object sender, EventArgs e)
+        {
+            SaveConfig();
+            MessageBox.Show("設定已儲存成功！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        private void SaveConfig()
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(Application.StartupPath, "config.txt");
+                var lines = new List<string>();
+                
+                // 快速鍵值
+                var hotkeyStr = cmbHotkey.SelectedValue != null ? cmbHotkey.SelectedValue.ToString() : "None";
+                lines.Add("Hotkey=" + hotkeyStr);
+                
+                // 重複間隔
+                lines.Add("Interval=" + numInterval.Value.ToString());
+                
+                // 鍵鼠間隔
+                lines.Add("DelayMs=" + numDelay.Value.ToString());
+                
+                // 座標
+                lines.Add("TargetX=" + txtCoordX.Text);
+                lines.Add("TargetY=" + txtCoordY.Text);
+
+                System.IO.File.WriteAllLines(path, lines.ToArray(), System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("儲存設定檔失敗：" + ex.Message, "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void LoadConfig()
+        {
+            try
+            {
+                string path = System.IO.Path.Combine(Application.StartupPath, "config.txt");
+                if (!System.IO.File.Exists(path))
+                    return;
+
+                var lines = System.IO.File.ReadAllLines(path, System.Text.Encoding.UTF8);
+                foreach (var line in lines)
+                {
+                    if (string.IsNullOrEmpty(line) || !line.Contains("="))
+                         continue;
+
+                    var parts = line.Split(new char[] { '=' }, 2);
+                    string key = parts[0].Trim();
+                    string val = parts[1].Trim();
+
+                    switch (key.ToLower())
+                    {
+                        case "hotkey":
+                            try
+                            {
+                                Keys keyVal = (Keys)Enum.Parse(typeof(Keys), val);
+                                cmbHotkey.SelectedValue = keyVal;
+                            }
+                            catch { }
+                            break;
+                        case "interval":
+                            decimal intervalVal;
+                            if (decimal.TryParse(val, out intervalVal))
+                            {
+                                if (intervalVal >= numInterval.Minimum && intervalVal <= numInterval.Maximum)
+                                    numInterval.Value = intervalVal;
+                            }
+                            break;
+                        case "delayms":
+                            decimal delayVal;
+                            if (decimal.TryParse(val, out delayVal))
+                            {
+                                if (delayVal >= numDelay.Minimum && delayVal <= numDelay.Maximum)
+                                    numDelay.Value = delayVal;
+                            }
+                            break;
+                        case "targetx":
+                            int x;
+                            if (int.TryParse(val, out x))
+                            {
+                                txtCoordX.Text = x.ToString();
+                                targetX = x;
+                            }
+                            break;
+                        case "targety":
+                            int y;
+                            if (int.TryParse(val, out y))
+                            {
+                                txtCoordY.Text = y.ToString();
+                                targetY = y;
+                            }
+                            break;
+                    }
+                }
+            }
+            catch { }
         }
     }
 }
