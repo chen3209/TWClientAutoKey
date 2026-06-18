@@ -10,9 +10,8 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>AutoKey</RootNamespace>
     <AssemblyName>AutoKey</AssemblyName>
-    <!-- .NET 4.0 Client Profile：Win7 SP1 已內建，Win8/10/11 向下相容 -->
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
-    <TargetFrameworkProfile>Client</TargetFrameworkProfile>
+    <!-- 以 .NET 4.8 為目標，相容於使用者的 Win7（已安裝 .NET 4.8）與 GitHub Actions 建置環境 -->
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
