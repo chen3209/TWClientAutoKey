@@ -672,9 +672,10 @@ namespace AutoKey
 
         private void MainForm_Resize(object sender, EventArgs e)
         {
+            // 使用者要求縮小至工作列即可，不再隱藏視窗
             if (this.WindowState == FormWindowState.Minimized)
             {
-                this.Hide();
+                // this.Hide(); // 註解此行，保留在工具列
                 notifyIcon1.Visible = true;
             }
         }
