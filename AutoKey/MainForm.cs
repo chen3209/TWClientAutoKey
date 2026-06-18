@@ -247,9 +247,9 @@ namespace AutoKey
                 return;
             }
 
-            targetProcessName = cmbProcess.SelectedItem.ToString();
+            targetProcessName = cmbProcess.SelectedItem != null ? cmbProcess.SelectedItem.ToString() : "";
             targetClassName = txtClassName.Text.Trim();
-            targetKey = (Keys)cmbHotkey.SelectedValue;
+            targetKey = cmbHotkey.SelectedValue != null ? (Keys)cmbHotkey.SelectedValue : Keys.None;
             int.TryParse(txtCoordX.Text, out targetX);
             int.TryParse(txtCoordY.Text, out targetY);
             
@@ -944,10 +944,16 @@ namespace AutoKey
                                 targetY = y;
                             }
                             break;
-                    }
                 }
             }
-            catch { }
+
+            if (targetX != 0 || targetY != 0)
+            {
+                hasCapturedCoordinate = true;
+            }
+            UpdateUIState();
+        }
+        catch { }
         }
     }
 }
