@@ -31,7 +31,6 @@ namespace AutoKey
         private TextBox txtCoordX;
         private TextBox txtCoordY;
         private Label lblCoord;
-        private bool hasCapturedCoordinate = false;
         
         private Button btnLockWindow;
         private bool isExplicitlyLocked = false;
@@ -198,7 +197,6 @@ namespace AutoKey
 
             lvWindows.Items.Clear();
             txtClassName.Text = "";
-            hasCapturedCoordinate = false;
             
             isExplicitlyLocked = false;
             if (btnLockWindow != null)
@@ -480,12 +478,18 @@ namespace AutoKey
                 sendTimer = new System.Threading.Timer(
                     SendTimerCallback,
                     generation,
-                    0,
+                    System.Threading.Timeout.Infinite,
                     System.Threading.Timeout.Infinite);
             }
 
             if (timerToDispose != null)
                 timerToDispose.Dispose();
+
+            // 立即在背景執行第一次
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                SendTimerCallback(generation);
+            });
         }
 
         private void StopSendTimer()
@@ -694,7 +698,7 @@ namespace AutoKey
         {
             bool isWindowLocked = isExplicitlyLocked;
             bool canCapture = isWindowLocked && !isRunning;
-            bool canSetKeyAndStart = hasCapturedCoordinate && !isRunning;
+            bool canSetKeyAndStart = isWindowLocked && !isRunning;
 
             groupBox1.Enabled = !isRunning && !isExplicitlyLocked;
             groupBox2.Enabled = !isRunning; // groupBox2 內部控制項個別處理
@@ -764,7 +768,6 @@ namespace AutoKey
                 isExplicitlyLocked = false;
                 btnLockWindow.Text = "🔒 鎖定選擇的視窗";
                 btnLockWindow.BackColor = SystemColors.Control;
-                hasCapturedCoordinate = false;
                 UpdateUIState();
             }
             else
@@ -796,6 +799,14 @@ namespace AutoKey
             {
                 MessageBox.Show("請先選擇並鎖定目標視窗", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
+            }
+
+            // 尋找已鎖定的視窗控制代碼並帶到最上層
+            var target = ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown);
+            if (target != null && target.Handle != IntPtr.Zero)
+            {
+                WinApiHelper.ShowWindow(target.Handle, WinApiHelper.SW_RESTORE);
+                WinApiHelper.SetForegroundWindow(target.Handle);
             }
 
             isCapturingCoord = true;
@@ -838,7 +849,6 @@ namespace AutoKey
                     btnCaptureCoord.Text = "擷取座標";
                     btnCaptureCoord.BackColor = SystemColors.Control;
                     isCapturingCoord = false;
-                    hasCapturedCoordinate = true;
                     UpdateUIState();
                 });
                 MouseHook.Stop();
@@ -952,11 +962,6 @@ namespace AutoKey
                             }
                             break;
                 }
-            }
-
-            if (targetX != 0 || targetY != 0)
-            {
-                hasCapturedCoordinate = true;
             }
             UpdateUIState();
         }

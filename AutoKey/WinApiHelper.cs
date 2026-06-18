@@ -105,6 +105,15 @@ namespace AutoKey
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool GetGUIThreadInfo(uint idThread, ref GUITHREADINFO lpgti);
 
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        public const int SW_RESTORE = 9;
+
         [StructLayout(LayoutKind.Sequential)]
         public struct GUITHREADINFO
         {
