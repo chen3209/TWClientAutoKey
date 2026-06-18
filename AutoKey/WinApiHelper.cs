@@ -39,6 +39,9 @@ namespace AutoKey
         public const uint WM_LBUTTONDOWN = 0x0201;
         public const uint WM_LBUTTONUP   = 0x0202;
         public const int MK_LBUTTON = 0x0001;
+        public const uint WM_ACTIVATE = 0x0006;
+        public const int WA_ACTIVE = 1;
+
 
         // ──────────────────────────────────────
         // P/Invoke 宣告
@@ -88,6 +91,11 @@ namespace AutoKey
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetMessageExtraInfo();
+
+        public delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        public static extern bool EnumChildWindows(IntPtr hWndParent, EnumChildProc lpEnumFunc, IntPtr lParam);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct POINT
@@ -242,9 +250,8 @@ namespace AutoKey
         // ──────────────────────────────────────
         // 發送按鍵（使用 SendInput 硬體層級模擬）
         // ──────────────────────────────────────
-
         /// <summary>
-        /// 使用 PostMessage 對指定視窗發送鍵盤按鍵 (WM_KEYDOWN / WM_KEYUP)。
+        /// 使用 PostMessage 對指定視窗及其所有子視窗發送鍵盤按鍵 (WM_KEYDOWN / WM_KEYUP)。
         /// 可在目標視窗處於背景時正常運作，不需要目標視窗為前景。
         /// </summary>
         public static bool SendKey(IntPtr hWnd, Keys vkCode)
@@ -257,19 +264,12 @@ namespace AutoKey
             bool isExtended = IsExtendedKey(vkCode);
 
             // 組裝 WM_KEYDOWN 的 lParam
-            // Bits 0-15: repeat count = 1
-            // Bits 16-23: scan code
-            // Bit 24: extended key flag
-            // Bit 30: previous key state (0 = was up)
-            // Bit 31: transition state (0 = being pressed)
             uint lParamDown = 1u;
             lParamDown |= (scan & 0xFFu) << 16;
             if (isExtended)
                 lParamDown |= (1u << 24);
 
             // 組裝 WM_KEYUP 的 lParam
-            // Bit 30: previous key state (1 = was down)
-            // Bit 31: transition state (1 = being released)
             uint lParamUp = 1u;
             lParamUp |= (scan & 0xFFu) << 16;
             if (isExtended)
@@ -277,18 +277,38 @@ namespace AutoKey
             lParamUp |= (1u << 30);
             lParamUp |= (1u << 31);
 
-            // 發送 WM_KEYDOWN
-            if (!PostMessage(hWnd, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown))
-                return false;
+            // 收集主視窗與其下所有子視窗 Handle
+            var targets = new List<IntPtr> { hWnd };
+            EnumChildWindows(hWnd, (childHWnd, lp) =>
+            {
+                targets.Add(childHWnd);
+                return true;
+            }, IntPtr.Zero);
+
+            // 發送 WM_ACTIVATE 與 WM_KEYDOWN 給所有相關視窗
+            foreach (var target in targets)
+            {
+                if (IsWindow(target))
+                {
+                    // 偽裝視窗為 Active 狀態，欺騙某些在背景會忽略鍵盤訊息的遊戲
+                    PostMessage(target, WM_ACTIVATE, (IntPtr)WA_ACTIVE, IntPtr.Zero);
+                    PostMessage(target, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
+                }
+            }
 
             // 按壓持續 100 毫秒，模擬真實人類按鍵
             System.Threading.Thread.Sleep(100);
 
-            if (!IsWindow(hWnd))
-                return false;
+            // 發送 WM_KEYUP 給所有相關視窗
+            foreach (var target in targets)
+            {
+                if (IsWindow(target))
+                {
+                    PostMessage(target, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
+                }
+            }
 
-            // 發送 WM_KEYUP
-            return PostMessage(hWnd, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
+            return true;
         }
 
         private static bool IsExtendedKey(Keys key)
