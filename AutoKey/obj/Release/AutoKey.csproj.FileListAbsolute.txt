@@ -1,0 +1,4 @@
+/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/obj/Release/AutoKey.csproj.AssemblyReference.cache
+/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/obj/Release/AutoKey.csproj.CoreCompileInputs.cache
+/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/bin/Release/AutoKey.exe
+/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/obj/Release/AutoKey.exe

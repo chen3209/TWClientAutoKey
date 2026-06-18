@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/AutoKey.csproj": {}
+  },
+  "projects": {
+    "/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/AutoKey.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/AutoKey.csproj",
+        "projectName": "AutoKey",
+        "projectPath": "/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/AutoKey.csproj",
+        "packagesPath": "/Users/chenbocheng/.nuget/packages/",
+        "outputPath": "/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/obj/",
+        "projectStyle": "PackageReference",
+        "skipContentFileWrite": true,
+        "configFilePaths": [
+          "/Users/chenbocheng/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net40-client"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net40-client": {
+            "projectReferences": {}
+          }
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        }
+      },
+      "frameworks": {
+        "net40-client": {
+          "dependencies": {
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )"
+            }
+          }
+        }
+      }
+    }
+  }
+}

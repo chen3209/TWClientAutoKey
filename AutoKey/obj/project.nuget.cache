@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Jw57P6VNP1U=",
+  "success": true,
+  "projectFilePath": "/Users/chenbocheng/Documents/研究自動按鍵/AutoKey/AutoKey.csproj",
+  "expectedPackageFiles": [
+    "/Users/chenbocheng/.nuget/packages/microsoft.netframework.referenceassemblies/1.0.3/microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "/Users/chenbocheng/.nuget/packages/microsoft.netframework.referenceassemblies.net40/1.0.3/microsoft.netframework.referenceassemblies.net40.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}
