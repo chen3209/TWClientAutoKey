@@ -768,7 +768,7 @@ namespace AutoKey
                     MessageBox.Show("請先從上方清單選擇一個視窗！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
-                targetProcessName = cmbProcess.SelectedItem?.ToString() ?? "";
+                targetProcessName = cmbProcess.SelectedItem != null ? cmbProcess.SelectedItem.ToString() : "";
                 CaptureSelectedWindow();
                 if (targetProcessId <= 0)
                 {

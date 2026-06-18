@@ -300,7 +300,8 @@ namespace AutoKey
             lParamUp |= (1u << 31);
 
             // 1. 取得目標視窗執行緒的當前邏輯焦點視窗
-            uint targetThreadId = GetWindowThreadProcessId(hWnd, out _);
+            uint unusedPid;
+            uint targetThreadId = GetWindowThreadProcessId(hWnd, out unusedPid);
             IntPtr targetHWnd = hWnd; // 預設是頂層主視窗
 
             var gti = new GUITHREADINFO();

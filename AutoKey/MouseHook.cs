@@ -47,7 +47,11 @@ namespace AutoKey
             if (nCode >= 0 && wParam == (IntPtr)WM_LBUTTONDOWN)
             {
                 MSLLHOOKSTRUCT hookStruct = (MSLLHOOKSTRUCT)Marshal.PtrToStructure(lParam, typeof(MSLLHOOKSTRUCT));
-                OnLeftClick?.Invoke(hookStruct.pt.x, hookStruct.pt.y);
+                var handler = OnLeftClick;
+                if (handler != null)
+                {
+                    handler(hookStruct.pt.x, hookStruct.pt.y);
+                }
             }
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
         }
