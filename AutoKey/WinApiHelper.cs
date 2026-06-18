@@ -83,6 +83,12 @@ namespace AutoKey
         [return: MarshalAs(UnmanagedType.Bool)]
         public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetMessageExtraInfo();
+
         [StructLayout(LayoutKind.Sequential)]
         public struct POINT
         {
@@ -97,6 +103,35 @@ namespace AutoKey
             public int Top;
             public int Right;
             public int Bottom;
+        }
+
+        // SendInput 相關結構
+        public const int INPUT_KEYBOARD = 1;
+        public const uint KEYEVENTF_KEYUP = 0x0002;
+        public const uint KEYEVENTF_SCANCODE = 0x0008;
+        public const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct INPUT
+        {
+            public int type;
+            public INPUTUNION u;
+        }
+
+        [StructLayout(LayoutKind.Explicit)]
+        public struct INPUTUNION
+        {
+            [FieldOffset(0)] public KEYBDINPUT ki;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct KEYBDINPUT
+        {
+            public ushort wVk;
+            public ushort wScan;
+            public uint dwFlags;
+            public uint time;
+            public IntPtr dwExtraInfo;
         }
 
         // ──────────────────────────────────────
@@ -205,39 +240,62 @@ namespace AutoKey
         }
 
         // ──────────────────────────────────────
-        // 發送按鍵（背景，不需聚焦）
+        // 發送按鍵（使用 SendInput 硬體層級模擬）
         // ──────────────────────────────────────
 
         /// <summary>
-        /// 對指定視窗以 PostMessage 發送 KeyDown + KeyUp，
-        /// 視窗不需在前景即可接收。
+        /// 使用 SendInput 模擬硬體層級的鍵盤按鍵。
+        /// 這能確保使用 DirectInput / RawInput 的遊戲也能正確接收到按鍵。
         /// </summary>
         public static bool SendKey(IntPtr hWnd, Keys vkCode)
         {
             if (hWnd == IntPtr.Zero || !IsWindow(hWnd))
                 return false;
 
-            uint scanCode = MapVirtualKey((uint)vkCode, 0);
+            ushort vk = (ushort)vkCode;
+            ushort scan = (ushort)MapVirtualKey((uint)vkCode, 0);
             bool isExtended = IsExtendedKey(vkCode);
 
-            // lParam for WM_KEYDOWN: repeat=1, scan code, extended flag
-            int lParamDown = 1 | ((int)scanCode << 16);
-            if (isExtended) lParamDown |= (1 << 24);
+            uint flagsDown = KEYEVENTF_SCANCODE;
+            uint flagsUp = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP;
+            if (isExtended)
+            {
+                flagsDown |= KEYEVENTF_EXTENDEDKEY;
+                flagsUp |= KEYEVENTF_EXTENDEDKEY;
+            }
 
-            // lParam for WM_KEYUP: prev state=1, transition=1
-            int lParamUp = lParamDown | (1 << 30) | (1 << 31);
+            INPUT[] inputs = new INPUT[2];
 
-            if (!PostMessage(hWnd, WM_KEYDOWN, (IntPtr)(int)vkCode, (IntPtr)lParamDown))
+            // KeyDown
+            inputs[0].type = INPUT_KEYBOARD;
+            inputs[0].u.ki.wVk = vk;
+            inputs[0].u.ki.wScan = scan;
+            inputs[0].u.ki.dwFlags = flagsDown;
+            inputs[0].u.ki.time = 0;
+            inputs[0].u.ki.dwExtraInfo = GetMessageExtraInfo();
+
+            // KeyUp
+            inputs[1].type = INPUT_KEYBOARD;
+            inputs[1].u.ki.wVk = vk;
+            inputs[1].u.ki.wScan = scan;
+            inputs[1].u.ki.dwFlags = flagsUp;
+            inputs[1].u.ki.time = 0;
+            inputs[1].u.ki.dwExtraInfo = GetMessageExtraInfo();
+
+            // 先送 KeyDown
+            uint result = SendInput(1, new INPUT[] { inputs[0] }, Marshal.SizeOf(typeof(INPUT)));
+            if (result != 1)
                 return false;
 
-            // 某些老遊戲如果 KeyDown 跟 KeyUp 在同一禎發生，會忽略這次輸入。
-            // 延長至 100 毫秒模擬真實人類按壓的長度
+            // 按壓持續 100 毫秒，模擬真實人類按鍵
             System.Threading.Thread.Sleep(100);
 
             if (!IsWindow(hWnd))
                 return false;
 
-            return PostMessage(hWnd, WM_KEYUP, (IntPtr)(int)vkCode, (IntPtr)lParamUp);
+            // 再送 KeyUp
+            result = SendInput(1, new INPUT[] { inputs[1] }, Marshal.SizeOf(typeof(INPUT)));
+            return result == 1;
         }
 
         private static bool IsExtendedKey(Keys key)
