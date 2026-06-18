@@ -241,55 +241,62 @@ namespace AutoKey
 
         private void btnStart_Click(object sender, EventArgs e)
         {
-            if (cmbProcess.SelectedItem == null)
+            try
             {
-                MessageBox.Show("請先選擇程序！", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
+                if (cmbProcess.SelectedItem == null)
+                {
+                    MessageBox.Show("請先選擇程序！", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                targetProcessName = cmbProcess.SelectedItem != null ? cmbProcess.SelectedItem.ToString() : "";
+                targetClassName = txtClassName.Text.Trim();
+                targetKey = cmbHotkey.SelectedValue != null ? (Keys)cmbHotkey.SelectedValue : Keys.None;
+                int.TryParse(txtCoordX.Text, out targetX);
+                int.TryParse(txtCoordY.Text, out targetY);
+                
+                // 由於已改成按鈕鎖定，我們確保使用的是已鎖定的資料，不必在此再次 Capture
+                // CaptureSelectedWindow();
+
+                if (targetProcessId <= 0)
+                {
+                    MessageBox.Show(
+                        "請先偵測並選擇一個明確的目標視窗。\r\n目前已停用自動群發模式，以避免影響其他視窗。",
+                        "需要指定單一視窗",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown) == null)
+                {
+                    MessageBox.Show(
+                        "目前無法用所選的 PID + ClassName 找到唯一視窗。\r\n請重新偵測並確認同一個 PID 底下只有一個符合的目標視窗。",
+                        "無法安全鎖定視窗",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                int interval = (int)numInterval.Value;
+                sendDelayMs = (int)numDelay.Value;
+                lock (sendStateLock)
+                {
+                    isRunning = true;
+                    autoStoppedByTargetLoss = false;
+                    autoStopMessage = "";
+                    sendIntervalMs = interval;
+                    targetMissingSinceUtc = DateTime.MinValue;
+                    sendFailureCount = 0;
+                }
+
+                StartSendTimer(interval);
+                UpdateUIState();
             }
-
-            targetProcessName = cmbProcess.SelectedItem != null ? cmbProcess.SelectedItem.ToString() : "";
-            targetClassName = txtClassName.Text.Trim();
-            targetKey = cmbHotkey.SelectedValue != null ? (Keys)cmbHotkey.SelectedValue : Keys.None;
-            int.TryParse(txtCoordX.Text, out targetX);
-            int.TryParse(txtCoordY.Text, out targetY);
-            
-            // 由於已改成按鈕鎖定，我們確保使用的是已鎖定的資料，不必在此再次 Capture
-            // CaptureSelectedWindow();
-
-            if (targetProcessId <= 0)
+            catch (Exception ex)
             {
-                MessageBox.Show(
-                    "請先偵測並選擇一個明確的目標視窗。\r\n目前已停用自動群發模式，以避免影響其他視窗。",
-                    "需要指定單一視窗",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
+                MessageBox.Show("開始執行時發生錯誤：\r\n" + ex.ToString(), "崩潰偵錯", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-            if (ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown) == null)
-            {
-                MessageBox.Show(
-                    "目前無法用所選的 PID + ClassName 找到唯一視窗。\r\n請重新偵測並確認同一個 PID 底下只有一個符合的目標視窗。",
-                    "無法安全鎖定視窗",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            int interval = (int)numInterval.Value;
-            sendDelayMs = (int)numDelay.Value;
-            lock (sendStateLock)
-            {
-                isRunning = true;
-                autoStoppedByTargetLoss = false;
-                autoStopMessage = "";
-                sendIntervalMs = interval;
-                targetMissingSinceUtc = DateTime.MinValue;
-                sendFailureCount = 0;
-            }
-
-            StartSendTimer(interval);
-            UpdateUIState();
         }
 
         private void btnStop_Click(object sender, EventArgs e)
