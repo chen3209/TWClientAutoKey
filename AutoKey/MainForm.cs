@@ -745,6 +745,23 @@ namespace AutoKey
             var target = ResolveSelectedWindow(targetProcessName, targetClassName, targetProcessId, targetProcessStartTime, targetProcessStartTimeKnown);
             if (target != null && target.Handle != IntPtr.Zero)
             {
+                WinApiHelper.RECT rect;
+                if (WinApiHelper.GetWindowRect(target.Handle, out rect))
+                {
+                    if (x < rect.Left || x > rect.Right || y < rect.Top || y > rect.Bottom)
+                    {
+                        RunOnUiThread(delegate
+                        {
+                            btnCaptureCoord.Text = "擷取座標";
+                            btnCaptureCoord.BackColor = SystemColors.Control;
+                            isCapturingCoord = false;
+                            MessageBox.Show("請點擊鎖定的應用程式視窗範圍內！", "擷取失敗", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        });
+                        MouseHook.Stop();
+                        return;
+                    }
+                }
+
                 WinApiHelper.POINT pt = new WinApiHelper.POINT { X = x, Y = y };
                 WinApiHelper.ScreenToClient(target.Handle, ref pt);
                 
