@@ -2,7 +2,7 @@ name: Build AutoKey for Windows
 
 on:
   push:
-    branches: [ main, master, v2-mouse-click ]
+    branches: [ main, master, v2-mouse-click, TWClientAutoKey-2-mouse-click ]
   workflow_dispatch:      # 允許手動從 GitHub 網頁觸發建置
 
 jobs:
