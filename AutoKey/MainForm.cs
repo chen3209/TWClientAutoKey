@@ -32,6 +32,9 @@ namespace AutoKey
         private TextBox txtCoordY;
         private Label lblCoord;
         private bool hasCapturedCoordinate = false;
+        
+        private Button btnLockWindow;
+        private bool isExplicitlyLocked = false;
 
         public MainForm()
         {
@@ -55,7 +58,13 @@ namespace AutoKey
             cmbHotkey.ValueMember = "Key";
             cmbHotkey.SelectedIndex = 0;
 
-            // 動態加入座標擷取 UI
+            // 動態加入鎖定視窗按鈕 (到 groupBox2)
+            btnLockWindow = new Button() { Text = "🔒 鎖定選擇的視窗", Location = new Point(480, 212), Size = new Size(160, 24) };
+            btnLockWindow.Click += BtnLockWindow_Click;
+            groupBox2.Controls.Add(btnLockWindow);
+            txtClassName.Width = 390; // 稍微縮短文字框以容納按鈕
+
+            // 動態加入座標擷取 UI (到 groupBox3)
             btnCaptureCoord = new Button() { Text = "擷取座標", Location = new Point(400, 22), Size = new Size(80, 23) };
             btnCaptureCoord.Click += BtnCaptureCoord_Click;
             lblCoord = new Label() { Text = "X, Y:", Location = new Point(485, 27), Size = new Size(35, 12) };
@@ -153,6 +162,15 @@ namespace AutoKey
             lvWindows.Items.Clear();
             txtClassName.Text = "";
             hasCapturedCoordinate = false;
+            
+            isExplicitlyLocked = false;
+            if (btnLockWindow != null)
+            {
+                btnLockWindow.Text = "🔒 鎖定選擇的視窗";
+                btnLockWindow.BackColor = SystemColors.Control;
+            }
+            lvWindows.Enabled = true;
+            btnDetectWindows.Enabled = true;
 
             if (!isRunning)
             {
@@ -197,7 +215,9 @@ namespace AutoKey
             targetKey = (Keys)cmbHotkey.SelectedValue;
             int.TryParse(txtCoordX.Text, out targetX);
             int.TryParse(txtCoordY.Text, out targetY);
-            CaptureSelectedWindow();
+            
+            // 由於已改成按鈕鎖定，我們確保使用的是已鎖定的資料，不必在此再次 Capture
+            // CaptureSelectedWindow();
 
             if (targetProcessId <= 0)
             {
@@ -607,12 +627,18 @@ namespace AutoKey
 
         private void UpdateUIState()
         {
-            bool isWindowLocked = lvWindows.SelectedItems.Count > 0;
+            bool isWindowLocked = isExplicitlyLocked;
             bool canCapture = isWindowLocked && !isRunning;
             bool canSetKeyAndStart = hasCapturedCoordinate && !isRunning;
 
-            groupBox1.Enabled = !isRunning;
-            groupBox2.Enabled = !isRunning;
+            groupBox1.Enabled = !isRunning && !isExplicitlyLocked;
+            groupBox2.Enabled = !isRunning; // groupBox2 內部控制項個別處理
+            
+            btnDetectWindows.Enabled = !isRunning && !isExplicitlyLocked;
+            lvWindows.Enabled = !isRunning && !isExplicitlyLocked;
+            
+            if (btnLockWindow != null)
+                btnLockWindow.Enabled = !isRunning && lvWindows.SelectedItems.Count > 0;
             
             if (btnCaptureCoord != null)
                 btnCaptureCoord.Enabled = canCapture || isCapturingCoord; // 如果正在擷取也保持 Enabled，由內部邏輯擋
@@ -664,10 +690,43 @@ namespace AutoKey
             base.OnFormClosed(e);
         }
 
+        private void BtnLockWindow_Click(object sender, EventArgs e)
+        {
+            if (isExplicitlyLocked)
+            {
+                // 解除鎖定
+                isExplicitlyLocked = false;
+                btnLockWindow.Text = "🔒 鎖定選擇的視窗";
+                btnLockWindow.BackColor = SystemColors.Control;
+                hasCapturedCoordinate = false;
+                UpdateUIState();
+            }
+            else
+            {
+                // 鎖定
+                if (lvWindows.SelectedItems.Count == 0)
+                {
+                    MessageBox.Show("請先從上方清單選擇一個視窗！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+                targetProcessName = cmbProcess.SelectedItem?.ToString() ?? "";
+                CaptureSelectedWindow();
+                if (targetProcessId <= 0)
+                {
+                    MessageBox.Show("無法鎖定視窗，請重新偵測。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+                
+                isExplicitlyLocked = true;
+                btnLockWindow.Text = "🔓 解除鎖定";
+                btnLockWindow.BackColor = Color.LightCoral;
+                UpdateUIState();
+            }
+        }
+
         private void BtnCaptureCoord_Click(object sender, EventArgs e)
         {
-            CaptureSelectedWindow();
-            if (targetProcessId <= 0)
+            if (!isExplicitlyLocked || targetProcessId <= 0)
             {
                 MessageBox.Show("請先選擇並鎖定目標視窗", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
