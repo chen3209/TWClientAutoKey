@@ -231,7 +231,7 @@ namespace AutoKey
                 return false;
 
             // 某些老遊戲如果 KeyDown 跟 KeyUp 在同一禎發生，會忽略這次輸入。
-            System.Threading.Thread.Sleep(30);
+            System.Threading.Thread.Sleep(50);
 
             if (!IsWindow(hWnd))
                 return false;
@@ -279,10 +279,14 @@ namespace AutoKey
             // lParam 是 Y 座標在最高 16 位元，X 座標在最低 16 位元
             IntPtr lParam = (IntPtr)((y << 16) | (x & 0xFFFF));
 
+            // 先發送 WM_MOUSEMOVE 讓遊戲內部更新游標狀態，避免狀態突變導致閃退
+            PostMessage(hWnd, 0x0200, IntPtr.Zero, lParam);
+            System.Threading.Thread.Sleep(30);
+
             if (!PostMessage(hWnd, WM_LBUTTONDOWN, (IntPtr)MK_LBUTTON, lParam))
                 return false;
 
-            System.Threading.Thread.Sleep(30);
+            System.Threading.Thread.Sleep(50);
 
             if (!IsWindow(hWnd))
                 return false;
