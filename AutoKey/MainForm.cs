@@ -31,6 +31,7 @@ namespace AutoKey
         private TextBox txtCoordX;
         private TextBox txtCoordY;
         private Label lblCoord;
+        private bool hasCapturedCoordinate = false;
 
         public MainForm()
         {
@@ -151,12 +152,14 @@ namespace AutoKey
 
             lvWindows.Items.Clear();
             txtClassName.Text = "";
+            hasCapturedCoordinate = false;
 
             if (!isRunning)
             {
                 lblStatus.Text = "狀態: ⏸ 停止";
                 lblTargetInfo.Text = "請重新偵測目標視窗";
             }
+            UpdateUIState();
         }
 
         private void lvWindows_SelectedIndexChanged(object sender, EventArgs e)
@@ -178,6 +181,7 @@ namespace AutoKey
                 txtClassName.Text = "";
                 lblTargetInfo.Text = "請選擇單一目標視窗";
             }
+            UpdateUIState();
         }
 
         private void btnStart_Click(object sender, EventArgs e)
@@ -603,12 +607,23 @@ namespace AutoKey
 
         private void UpdateUIState()
         {
+            bool isWindowLocked = lvWindows.SelectedItems.Count > 0;
+            bool canCapture = isWindowLocked && !isRunning;
+            bool canSetKeyAndStart = hasCapturedCoordinate && !isRunning;
+
             groupBox1.Enabled = !isRunning;
             groupBox2.Enabled = !isRunning;
-            cmbHotkey.Enabled = !isRunning;
-            numInterval.Enabled = !isRunning;
+            
+            if (btnCaptureCoord != null)
+                btnCaptureCoord.Enabled = canCapture || isCapturingCoord; // 如果正在擷取也保持 Enabled，由內部邏輯擋
+            
+            if (txtCoordX != null) txtCoordX.Enabled = canCapture;
+            if (txtCoordY != null) txtCoordY.Enabled = canCapture;
 
-            btnStart.Enabled = !isRunning;
+            cmbHotkey.Enabled = canSetKeyAndStart;
+            numInterval.Enabled = canSetKeyAndStart;
+
+            btnStart.Enabled = canSetKeyAndStart;
             btnStop.Enabled = isRunning;
 
             if (isRunning)
@@ -681,6 +696,8 @@ namespace AutoKey
                     btnCaptureCoord.Text = "擷取座標";
                     btnCaptureCoord.BackColor = SystemColors.Control;
                     isCapturingCoord = false;
+                    hasCapturedCoordinate = true;
+                    UpdateUIState();
                 });
                 MouseHook.Stop();
             }
