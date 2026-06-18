@@ -273,7 +273,7 @@ namespace AutoKey
         // 發送按鍵（使用 SendInput 硬體層級模擬）
         // ──────────────────────────────────────
         /// <summary>
-        /// 使用 SendMessage / PostMessage 對指定視窗發送鍵盤按鍵 (WM_KEYDOWN / WM_KEYUP / WM_CHAR)。
+        /// 使用 SendMessage / PostMessage 對指定視窗發送鍵盤按鍵 (WM_KEYDOWN / WM_KEYUP)。
         /// 可在目標視窗處於背景時正常運作，不需要目標視窗為前景。
         /// </summary>
         public static bool SendKey(IntPtr hWnd, Keys vkCode)
@@ -313,35 +313,18 @@ namespace AutoKey
                 }
             }
 
-            // 2. 僅對最頂層主視窗發送 WM_ACTIVATE 狀態偽裝 (不重複發送給子視窗以免狀態錯亂)
-            PostMessage(hWnd, WM_ACTIVATE, (IntPtr)WA_ACTIVE, IntPtr.Zero);
-
-            // 3. 對真正的目標視窗發送焦點與按鍵事件
+            // 2. 對真正的目標視窗同步發送按鍵事件
             if (IsWindow(targetHWnd))
             {
-                // 送出 WM_SETFOCUS 使其獲取邏輯焦點
-                PostMessage(targetHWnd, WM_SETFOCUS, IntPtr.Zero, IntPtr.Zero);
-
-                // 使用 SendMessage 同步發送，穿透某些過濾 PostMessage 的保護機制
+                // 發送按鍵按下訊息
                 SendMessage(targetHWnd, WM_KEYDOWN, (IntPtr)vk, (IntPtr)lParamDown);
-
-                // 如果是字母或數字鍵，額外加送 WM_CHAR 訊息，因為有些遊戲僅由 WM_CHAR 讀取按鍵輸入
-                if ((vkCode >= Keys.D0 && vkCode <= Keys.D9) ||
-                    (vkCode >= Keys.NumPad0 && vkCode <= Keys.NumPad9) ||
-                    (vkCode >= Keys.A && vkCode <= Keys.Z))
-                {
-                    char charVal = (char)MapVirtualKey((uint)vkCode, 2); // MAPVK_VK_TO_CHAR = 2
-                    if (charVal != '\0')
-                    {
-                        SendMessage(targetHWnd, WM_CHAR, (IntPtr)charVal, (IntPtr)lParamDown);
-                    }
-                }
 
                 // 按壓持續 100 毫秒，模擬真實人類按鍵
                 System.Threading.Thread.Sleep(100);
 
                 if (IsWindow(targetHWnd))
                 {
+                    // 發送按鍵釋放訊息
                     SendMessage(targetHWnd, WM_KEYUP, (IntPtr)vk, (IntPtr)lParamUp);
                 }
             }
